@@ -1,4 +1,4 @@
-use sqlx::{PgConnection, PgPool};
+use sqlx::PgConnection;
 use uuid::Uuid;
 
 use crate::{
@@ -80,6 +80,8 @@ mod tests {
     use std::time::Duration;
 
     use super::*;
+    use sqlx::PgPool;
+
     use crate::session::{SessionScope, issue_session, resolve_session};
 
     async fn authorize(
@@ -182,10 +184,9 @@ mod tests {
         let membership = create_membership(&pool, space, identity, "owner").await;
         let session = identity_session(&pool, identity).await;
 
-        let grant =
-            authorize(&pool, &session, space, Capability::ManageSpace)
-                .await
-                .expect("owner should be authorized");
+        let grant = authorize(&pool, &session, space, Capability::ManageSpace)
+            .await
+            .expect("owner should be authorized");
 
         assert_eq!(grant.membership_id(), membership);
     }
@@ -264,6 +265,46 @@ mod tests {
     }
 
     #[sqlx::test(migrations = "./migrations")]
+    async fn transaction_authorization_locks_membership_against_role_change(pool: PgPool) {
+        let identity = create_identity(&pool).await;
+        let space = create_space(&pool, identity).await;
+        let membership = create_membership(&pool, space, identity, "owner").await;
+        let session = identity_session(&pool, identity).await;
+
+        let mut authorizing_tx = pool.begin().await.unwrap();
+        authorize_space_capability(
+            &mut authorizing_tx,
+            &session,
+            space,
+            Capability::ManageSpace,
+        )
+        .await
+        .expect("authorization should acquire membership lock");
+
+        let mut competing_tx = pool.begin().await.unwrap();
+        sqlx::query("SET LOCAL lock_timeout = '100ms'")
+            .execute(&mut *competing_tx)
+            .await
+            .unwrap();
+
+        let update = sqlx::query(
+            "UPDATE memberships
+             SET role = 'guest'
+             WHERE id = $1",
+        )
+        .bind(membership)
+        .execute(&mut *competing_tx)
+        .await;
+
+        assert!(
+            update.is_err(),
+            "membership role must not change while a transaction relies on its authorization"
+        );
+
+        authorizing_tx.rollback().await.unwrap();
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
     async fn identity_session_uses_role_of_each_space_membership(pool: PgPool) {
         let identity = create_identity(&pool).await;
         let other_creator = create_identity(&pool).await;
@@ -273,23 +314,14 @@ mod tests {
         create_membership(&pool, guest_space, identity, "guest").await;
         let session = identity_session(&pool, identity).await;
 
-        assert!(authorize(
-            &pool,
-            &session,
-            owned_space,
-            Capability::ManageSpace
-        )
-        .await
-        .is_ok());
+        assert!(
+            authorize(&pool, &session, owned_space, Capability::ManageSpace)
+                .await
+                .is_ok()
+        );
 
         assert!(matches!(
-            authorize(
-                &pool,
-                &session,
-                guest_space,
-                Capability::ManageSpace
-            )
-            .await,
+            authorize(&pool, &session, guest_space, Capability::ManageSpace).await,
             Err(AuthorizationError::Denied)
         ));
     }
