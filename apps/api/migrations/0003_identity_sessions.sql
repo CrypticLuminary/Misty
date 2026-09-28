@@ -1,15 +1,12 @@
 -- Server-recognized identity and session foundation for Phase 2.
 
-CREATE TYPE identity_kind AS ENUM ('owner', 'guest');
-
 CREATE TABLE identities (
     id UUID PRIMARY KEY,
-    kind identity_kind NOT NULL,
     display_name TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     CHECK (
-        (kind = 'owner' AND display_name IS NULL)
-        OR (kind = 'guest' AND char_length(btrim(display_name)) BETWEEN 1 AND 80)
+        display_name IS NULL
+        OR char_length(btrim(display_name)) BETWEEN 1 AND 80
     )
 );
 
