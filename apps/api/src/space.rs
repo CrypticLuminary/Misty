@@ -602,10 +602,10 @@ mod tests {
     async fn identity_session_lists_only_active_memberships(pool: PgPool) {
         let identity = create_identity(&pool).await;
         let other_owner = create_identity(&pool).await;
-        let identity_session = identity_session(&pool, identity).await;
+        let session = identity_session(&pool, identity).await;
         let other_session = identity_session(&pool, other_owner).await;
 
-        let owned = create_space(&pool, &identity_session, "Owned", Uuid::new_v4())
+        let owned = create_space(&pool, &session, "Owned", Uuid::new_v4())
             .await
             .unwrap();
         let shared = create_space(&pool, &other_session, "Shared", Uuid::new_v4())
@@ -624,7 +624,7 @@ mod tests {
         .await
         .unwrap();
 
-        let spaces = list_spaces(&pool, &identity_session).await.unwrap();
+        let spaces = list_spaces(&pool, &session).await.unwrap();
         assert_eq!(spaces.len(), 2);
         assert!(
             spaces
@@ -647,7 +647,7 @@ mod tests {
         .await
         .unwrap();
 
-        let spaces = list_spaces(&pool, &identity_session).await.unwrap();
+        let spaces = list_spaces(&pool, &session).await.unwrap();
         assert_eq!(spaces.len(), 1);
         assert_eq!(spaces[0].space_id(), owned.space_id());
     }
