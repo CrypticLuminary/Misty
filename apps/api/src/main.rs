@@ -1,6 +1,4 @@
 mod config;
-mod jobs;
-
 use axum::{Json, Router, extract::State, http::StatusCode, routing::get};
 use config::Config;
 use serde::Serialize;
