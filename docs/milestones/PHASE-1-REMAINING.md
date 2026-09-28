@@ -9,7 +9,7 @@ This checklist is evidence-driven. Do not mark an item complete unless the repos
 - [ ] Change Rust CI/audit commands to locked dependency resolution where supported.
 - [ ] Change web CI/security installs to `--frozen-lockfile`.
 - [ ] Change Python CI from ephemeral `uvx` resolution to the committed environment with `uv sync --frozen` and `uv run`.
-- [x] Pin local PostgreSQL/pgvector, Redis, and MinIO image versions.
+- [x] Pin local PostgreSQL/pgvector, Redis, and S3-compatible object-storage image versions.
 - [x] Pin CI PostgreSQL/pgvector image version.
 - [ ] Verify pinned image tags exist and local health checks remain valid.
 
