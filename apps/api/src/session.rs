@@ -183,7 +183,10 @@ mod tests {
         .execute(&pool)
         .await;
 
-        assert!(result.is_err(), "session identity must own its scoped membership");
+        assert!(
+            result.is_err(),
+            "session identity must own its scoped membership"
+        );
     }
 
     #[sqlx::test(migrations = "./migrations")]
@@ -229,18 +232,15 @@ mod tests {
 
         assert!(resolve_session(&pool, &hash).await.is_ok());
 
-        sqlx::query(
-            "UPDATE memberships SET state = 'removed', ended_at = now() WHERE id = $1",
-        )
-        .bind(membership)
-        .execute(&pool)
-        .await
-        .unwrap();
+        sqlx::query("UPDATE memberships SET state = 'removed', ended_at = now() WHERE id = $1")
+            .bind(membership)
+            .execute(&pool)
+            .await
+            .unwrap();
 
         assert_eq!(
             resolve_session(&pool, &hash).await,
             Err(SessionResolutionError::InvalidCredential)
         );
     }
-
 }
