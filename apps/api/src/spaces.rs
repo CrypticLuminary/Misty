@@ -22,7 +22,9 @@ impl SpaceStatus {
                 | (Self::Deleting, Self::Deleted)
         );
 
-        valid.then_some(next).ok_or(TransitionError::InvalidTransition)
+        valid
+            .then_some(next)
+            .ok_or(TransitionError::InvalidTransition)
     }
 
     pub fn accepts_writes(self) -> bool {
