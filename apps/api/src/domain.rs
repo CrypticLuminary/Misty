@@ -91,11 +91,26 @@ mod tests {
 
     #[test]
     fn space_lifecycle_only_moves_forward() {
-        assert_eq!(SpaceState::Active.transition_to(SpaceState::Archived), Ok(SpaceState::Archived));
-        assert_eq!(SpaceState::Archived.transition_to(SpaceState::Deleting), Ok(SpaceState::Deleting));
-        assert_eq!(SpaceState::Deleting.transition_to(SpaceState::Deleted), Ok(SpaceState::Deleted));
-        assert_eq!(SpaceState::Archived.transition_to(SpaceState::Active), Err(DomainError::InvalidTransition));
-        assert_eq!(SpaceState::Active.transition_to(SpaceState::Deleted), Err(DomainError::InvalidTransition));
+        assert_eq!(
+            SpaceState::Active.transition_to(SpaceState::Archived),
+            Ok(SpaceState::Archived)
+        );
+        assert_eq!(
+            SpaceState::Archived.transition_to(SpaceState::Deleting),
+            Ok(SpaceState::Deleting)
+        );
+        assert_eq!(
+            SpaceState::Deleting.transition_to(SpaceState::Deleted),
+            Ok(SpaceState::Deleted)
+        );
+        assert_eq!(
+            SpaceState::Archived.transition_to(SpaceState::Active),
+            Err(DomainError::InvalidTransition)
+        );
+        assert_eq!(
+            SpaceState::Active.transition_to(SpaceState::Deleted),
+            Err(DomainError::InvalidTransition)
+        );
     }
 
     #[test]
@@ -108,9 +123,18 @@ mod tests {
 
     #[test]
     fn membership_exit_is_terminal() {
-        assert_eq!(MembershipState::Active.transition_to(MembershipState::Left), Ok(MembershipState::Left));
-        assert_eq!(MembershipState::Active.transition_to(MembershipState::Removed), Ok(MembershipState::Removed));
-        assert_eq!(MembershipState::Left.transition_to(MembershipState::Active), Err(DomainError::InvalidTransition));
+        assert_eq!(
+            MembershipState::Active.transition_to(MembershipState::Left),
+            Ok(MembershipState::Left)
+        );
+        assert_eq!(
+            MembershipState::Active.transition_to(MembershipState::Removed),
+            Ok(MembershipState::Removed)
+        );
+        assert_eq!(
+            MembershipState::Left.transition_to(MembershipState::Active),
+            Err(DomainError::InvalidTransition)
+        );
     }
 
     #[test]
