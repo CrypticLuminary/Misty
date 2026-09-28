@@ -18,7 +18,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87
         with:
           toolchain: 1.98.1
-      - uses: taiki-e/install-action@4cef1412cce204788f482e778a0b9187f9626a29 # main
+      - uses: taiki-e/install-action@4cef1412cce204788f482e778a0b9187f9626a29 # v2.87.21
         with:
           tool: cargo-audit
       # RUSTSEC-2023-0071 is transitively pulled by SQLx's MySQL support even though Misty
