@@ -1,3 +1,4 @@
+use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use rand::RngCore;
 use sha2::{Digest, Sha256};
 use subtle::ConstantTimeEq;
@@ -8,6 +9,14 @@ pub fn generate_secret() -> [u8; INVITATION_SECRET_BYTES] {
     let mut secret = [0_u8; INVITATION_SECRET_BYTES];
     rand::rng().fill_bytes(&mut secret);
     secret
+}
+
+pub fn encode_secret(secret: &[u8]) -> String {
+    URL_SAFE_NO_PAD.encode(secret)
+}
+
+pub fn decode_secret(encoded: &str) -> Option<Vec<u8>> {
+    URL_SAFE_NO_PAD.decode(encoded).ok()
 }
 
 pub fn hash_secret(secret: &[u8]) -> [u8; 32] {
@@ -26,6 +35,12 @@ mod tests {
     #[test]
     fn generated_invitation_secrets_are_not_reused() {
         assert_ne!(generate_secret(), generate_secret());
+    }
+
+    #[test]
+    fn url_encoding_round_trips() {
+        let secret = generate_secret();
+        assert_eq!(decode_secret(&encode_secret(&secret)).as_deref(), Some(secret.as_slice()));
     }
 
     #[test]
