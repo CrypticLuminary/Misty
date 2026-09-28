@@ -3,10 +3,10 @@
 Last updated: 2026-09-28
 
 ## Current phase
-**Phase 1 — Engineering Foundation (completion candidate)**
+**Phase 1 — Engineering Foundation (complete)**
 
 ## Current milestone
-**M1.6 — Foundation self-review / exit gate**
+**Phase 1 exit gate passed; Phase 2 is next**
 
 ## Completed and verified
 - Product invariants, architecture, security guidance, engineering rules, roadmap and foundational ADRs.
@@ -22,7 +22,7 @@ Last updated: 2026-09-28
 Implementation evidence on commit c8cd50f183a9489757d3e5dfe49075f3a9a8fed1: CI run 36385011447, Security run 36385011516, and CodeQL run 36385011418 all passed.
 
 ## Final Phase 1 gate
-The completion-state documentation commit must pass CI, Security and CodeQL. After that evidence is recorded, Phase 2 becomes the active phase.
+Passed on commit `4023d932f471d479b6f2d954b1f72a0885b915f2`: CI run `36385462155`, Security run `36385462159`, and CodeQL run `36385462173` all completed successfully.
 
 ## Not implemented yet
 No production application capability should be assumed. The following remain future work:
