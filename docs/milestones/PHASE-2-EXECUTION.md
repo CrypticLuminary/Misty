@@ -74,12 +74,18 @@ For every task ask:
 **Review B:** accepted. CreateSpace is a deliberate bootstrap exception to Space capability authorization because no Space membership exists before creation; requiring an identity-scoped authenticated session is the correct boundary. `created_by_identity_id` remains provenance while ownership is created as Membership state. The audit table was introduced because a real use case now requires it; no generic repository/service or extra infrastructure was added.
 
 ### P2-T03 Read + list Space
-- [ ] Protected Space summary through central authorization.
-- [ ] List only active memberships appropriate to the current identity/session scope.
-- [ ] No ID enumeration/cross-Space leakage.
-- [ ] Query/index review.
-- [ ] Review A complete.
-- [ ] Review B complete.
+- [x] Protected Space summary through central authorization.
+- [x] List only active memberships appropriate to the current identity/session scope.
+- [x] No ID enumeration/cross-Space leakage.
+- [x] Query/index review.
+- [x] Review A complete.
+- [x] Review B complete.
+
+**Evidence:** implementation commit `5f500302f2ff5a007cb9f3e3a42cd7af2a7584fb` passed CI `36438206191`, Security `36438206287`, and CodeQL `36438206316`.
+
+**Review A:** passed. Single-Space reads and Space listing both use the central `can_view` boundary. Scoped sessions enumerate only their bound membership even if the same identity belongs to other Spaces; inactive memberships disappear; deleted Spaces are not returned; unauthorized/existence-mismatch paths return the same denied result. Authorization membership rows are held under the transaction lock while the read is resolved.
+
+**Review B:** accepted. The shared scope-aware grant query keeps capability semantics centralized and avoids one authorization query per Space without introducing a repository/ACL abstraction. Existing active-membership and primary-key indexes support the Phase 2 query shape. Pagination is intentionally deferred to the API-contract milestone unless measured/realistic per-identity Space counts justify it.
 
 ### P2-T04 Archive + ACTIVE-only mutation rules
 - [ ] Archive via `can_manage_space`.
