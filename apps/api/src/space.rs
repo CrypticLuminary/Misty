@@ -2,9 +2,7 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::{
-    authorization::{
-        AuthorizationError, authorize_space_capability, list_space_capability_grants,
-    },
+    authorization::{AuthorizationError, authorize_space_capability, list_space_capability_grants},
     domain::{Capability, SpaceState},
     session::AuthenticatedSession,
 };
@@ -237,8 +235,7 @@ pub async fn list_spaces(
 }
 
 fn summary_from_row(row: (Uuid, String, String)) -> Result<SpaceSummary, SpaceAccessError> {
-    let state =
-        space_state_from_storage(&row.2).ok_or(SpaceAccessError::InvariantViolation)?;
+    let state = space_state_from_storage(&row.2).ok_or(SpaceAccessError::InvariantViolation)?;
 
     Ok(SpaceSummary {
         space_id: row.0,
@@ -595,8 +592,7 @@ mod tests {
         .await
         .unwrap();
 
-        let session =
-            scoped_session(&pool, guest, first.space_id(), first_membership).await;
+        let session = scoped_session(&pool, guest, first.space_id(), first_membership).await;
         let spaces = list_spaces(&pool, &session).await.unwrap();
 
         assert_eq!(spaces.len(), 1);
@@ -631,10 +627,16 @@ mod tests {
 
         let spaces = list_spaces(&pool, &identity_session).await.unwrap();
         assert_eq!(spaces.len(), 2);
-        assert!(spaces.iter().any(|space| space.space_id() == owned.space_id()));
-        assert!(spaces
-            .iter()
-            .any(|space| space.space_id() == shared.space_id()));
+        assert!(
+            spaces
+                .iter()
+                .any(|space| space.space_id() == owned.space_id())
+        );
+        assert!(
+            spaces
+                .iter()
+                .any(|space| space.space_id() == shared.space_id())
+        );
 
         sqlx::query(
             "UPDATE memberships
