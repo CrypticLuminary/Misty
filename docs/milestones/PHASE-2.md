@@ -8,14 +8,16 @@ Deliver Misty's first real vertical slice: a creator can create a private Space,
 This phase intentionally comes before media upload. Upload authorization is unsafe until Space identity, membership, invitation and capability boundaries exist.
 
 ## M2.1 Domain model and invariants
-- [ ] Define Space lifecycle: ACTIVE → ARCHIVED → DELETING → DELETED.
-- [ ] Define membership lifecycle: ACTIVE → LEFT / REMOVED.
-- [ ] Define invitation lifecycle and expiry/revocation semantics.
-- [ ] Define capability vocabulary and role presets without using roles as the authorization boundary.
-- [ ] Add PostgreSQL constraints/indexes for cross-Space integrity and token uniqueness.
-- [ ] Add domain transition tests.
+- [x] Define Space lifecycle: ACTIVE → ARCHIVED → DELETING → DELETED.
+- [x] Define membership lifecycle: ACTIVE → LEFT / REMOVED.
+- [x] Define invitation lifecycle and expiry/revocation semantics.
+- [x] Define capability vocabulary and role presets without using roles as the authorization boundary.
+- [x] Add PostgreSQL constraints/indexes for cross-Space integrity and token uniqueness.
+- [x] Add domain transition tests.
 
 **Gate:** invalid transitions and cross-Space relationships are rejected by authoritative domain/database rules.
+
+**Evidence:** `0002_secure_space_access.sql` enforces lifecycle shape, active-owner/membership uniqueness, invitation verifier constraints and same-Space invitation creators. `domain.rs` rejects invalid transitions and includes PostgreSQL integration tests for the critical constraints.
 
 ## M2.2 Identity and sessions
 - [ ] Establish owner identity/session foundation.
