@@ -14,7 +14,10 @@ struct Health {
 }
 
 async fn health() -> Json<Health> {
-    Json(Health { status: "ok", service: "misty-api" })
+    Json(Health {
+        status: "ok",
+        service: "misty-api",
+    })
 }
 
 #[tokio::main]
