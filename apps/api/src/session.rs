@@ -1,7 +1,7 @@
 use std::time::Duration;
 
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
-use rand::{rngs::OsRng, RngCore};
+use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
+use rand::{RngCore, rngs::OsRng};
 use sha2::{Digest, Sha256};
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -26,10 +26,7 @@ impl IssuedSession {
 
 pub enum SessionScope {
     Identity,
-    SpaceMembership {
-        space_id: Uuid,
-        membership_id: Uuid,
-    },
+    SpaceMembership { space_id: Uuid, membership_id: Uuid },
 }
 
 struct SessionSecret(String);
@@ -450,13 +447,7 @@ mod tests {
         create_identity(&pool, identity).await;
 
         assert!(matches!(
-            issue_session(
-                &pool,
-                identity,
-                SessionScope::Identity,
-                Duration::ZERO,
-            )
-            .await,
+            issue_session(&pool, identity, SessionScope::Identity, Duration::ZERO,).await,
             Err(SessionIssuanceError::InvalidTtl)
         ));
     }
