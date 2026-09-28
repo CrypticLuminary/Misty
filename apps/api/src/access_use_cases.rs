@@ -47,6 +47,21 @@ pub struct IssuedSession {
     pub expires_at: DateTime<Utc>,
 }
 
+
+pub async fn create_account_session_for_bootstrap(
+    pool: &PgPool,
+) -> Result<IssuedSession, AccessError> {
+    let subject_id = Uuid::new_v4();
+    let mut tx = pool.begin().await?;
+    sqlx::query("INSERT INTO subjects (id, kind) VALUES ($1, 'account')")
+        .bind(subject_id)
+        .execute(&mut *tx)
+        .await?;
+    let session = create_session(&mut tx, subject_id, Duration::hours(8)).await?;
+    tx.commit().await?;
+    Ok(session)
+}
+
 pub async fn issue_invitation(
     pool: &PgPool,
     actor_subject_id: Uuid,
