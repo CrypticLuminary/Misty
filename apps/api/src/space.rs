@@ -310,6 +310,29 @@ mod tests {
             .expect("identity session should resolve")
     }
 
+    async fn scoped_session(
+        pool: &PgPool,
+        identity: Uuid,
+        space_id: Uuid,
+        membership_id: Uuid,
+    ) -> AuthenticatedSession {
+        let issued = issue_session(
+            pool,
+            identity,
+            SessionScope::SpaceMembership {
+                space_id,
+                membership_id,
+            },
+            Duration::from_secs(3600),
+        )
+        .await
+        .expect("scoped session should issue");
+        let (_, secret) = issued.into_parts();
+        resolve_session(pool, &secret)
+            .await
+            .expect("scoped session should resolve")
+    }
+
     #[test]
     fn space_name_is_trimmed_and_control_characters_are_rejected() {
         assert_eq!(
@@ -508,6 +531,124 @@ mod tests {
             membership_count, 0,
             "audit failure must roll back the owner membership"
         );
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn read_space_requires_view_capability(pool: PgPool) {
+        let owner = create_identity(&pool).await;
+        let outsider = create_identity(&pool).await;
+        let owner_session = identity_session(&pool, owner).await;
+        let outsider_session = identity_session(&pool, outsider).await;
+
+        let created = create_space(&pool, &owner_session, "Protected", Uuid::new_v4())
+            .await
+            .unwrap();
+
+        let summary = read_space(&pool, &owner_session, created.space_id())
+            .await
+            .expect("owner should read Space");
+        assert_eq!(summary.space_id(), created.space_id());
+        assert_eq!(summary.name(), "Protected");
+        assert_eq!(summary.state(), SpaceState::Active);
+
+        assert!(matches!(
+            read_space(&pool, &outsider_session, created.space_id()).await,
+            Err(SpaceAccessError::Denied)
+        ));
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn scoped_session_lists_only_its_bound_space(pool: PgPool) {
+        let first_owner = create_identity(&pool).await;
+        let second_owner = create_identity(&pool).await;
+        let guest = create_identity(&pool).await;
+        let first_owner_session = identity_session(&pool, first_owner).await;
+        let second_owner_session = identity_session(&pool, second_owner).await;
+
+        let first = create_space(&pool, &first_owner_session, "First", Uuid::new_v4())
+            .await
+            .unwrap();
+        let second = create_space(&pool, &second_owner_session, "Second", Uuid::new_v4())
+            .await
+            .unwrap();
+
+        let first_membership = Uuid::new_v4();
+        sqlx::query(
+            "INSERT INTO memberships (id, space_id, identity_id, role)
+             VALUES ($1, $2, $3, 'guest')",
+        )
+        .bind(first_membership)
+        .bind(first.space_id())
+        .bind(guest)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        sqlx::query(
+            "INSERT INTO memberships (id, space_id, identity_id, role)
+             VALUES ($1, $2, $3, 'member')",
+        )
+        .bind(Uuid::new_v4())
+        .bind(second.space_id())
+        .bind(guest)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        let session =
+            scoped_session(&pool, guest, first.space_id(), first_membership).await;
+        let spaces = list_spaces(&pool, &session).await.unwrap();
+
+        assert_eq!(spaces.len(), 1);
+        assert_eq!(spaces[0].space_id(), first.space_id());
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn identity_session_lists_only_active_memberships(pool: PgPool) {
+        let identity = create_identity(&pool).await;
+        let other_owner = create_identity(&pool).await;
+        let identity_session = identity_session(&pool, identity).await;
+        let other_session = identity_session(&pool, other_owner).await;
+
+        let owned = create_space(&pool, &identity_session, "Owned", Uuid::new_v4())
+            .await
+            .unwrap();
+        let shared = create_space(&pool, &other_session, "Shared", Uuid::new_v4())
+            .await
+            .unwrap();
+
+        let shared_membership = Uuid::new_v4();
+        sqlx::query(
+            "INSERT INTO memberships (id, space_id, identity_id, role)
+             VALUES ($1, $2, $3, 'member')",
+        )
+        .bind(shared_membership)
+        .bind(shared.space_id())
+        .bind(identity)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        let spaces = list_spaces(&pool, &identity_session).await.unwrap();
+        assert_eq!(spaces.len(), 2);
+        assert!(spaces.iter().any(|space| space.space_id() == owned.space_id()));
+        assert!(spaces
+            .iter()
+            .any(|space| space.space_id() == shared.space_id()));
+
+        sqlx::query(
+            "UPDATE memberships
+             SET state = 'left', ended_at = now()
+             WHERE id = $1",
+        )
+        .bind(shared_membership)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        let spaces = list_spaces(&pool, &identity_session).await.unwrap();
+        assert_eq!(spaces.len(), 1);
+        assert_eq!(spaces[0].space_id(), owned.space_id());
     }
 
     #[sqlx::test(migrations = "./migrations")]
