@@ -73,10 +73,28 @@ impl SessionVerifier {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AuthenticatedSession {
-    pub session_id: Uuid,
-    pub identity_id: Uuid,
-    pub space_id: Option<Uuid>,
-    pub membership_id: Option<Uuid>,
+    session_id: Uuid,
+    identity_id: Uuid,
+    space_id: Option<Uuid>,
+    membership_id: Option<Uuid>,
+}
+
+impl AuthenticatedSession {
+    pub const fn session_id(&self) -> Uuid {
+        self.session_id
+    }
+
+    pub const fn identity_id(&self) -> Uuid {
+        self.identity_id
+    }
+
+    pub const fn space_id(&self) -> Option<Uuid> {
+        self.space_id
+    }
+
+    pub const fn membership_id(&self) -> Option<Uuid> {
+        self.membership_id
+    }
 }
 
 #[derive(Debug)]
@@ -285,7 +303,7 @@ mod tests {
         let resolved = resolve_session(&pool, &raw_secret)
             .await
             .expect("valid session should resolve");
-        assert_eq!(resolved.identity_id, identity);
+        assert_eq!(resolved.identity_id(), identity);
 
         assert!(revoke_session(&pool, session_id, identity).await.unwrap());
         assert!(matches!(
