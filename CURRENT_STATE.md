@@ -3,10 +3,10 @@
 Last updated: 2026-09-28
 
 ## Current phase
-**Phase 1 — Engineering Foundation (complete)**
+**Phase 2 — Secure Space Access (active)**
 
 ## Current milestone
-**Phase 1 exit gate passed; Phase 2 is next**
+**M2.1 — Domain model and invariants**
 
 ## Completed and verified
 - Product invariants, architecture, security guidance, engineering rules, roadmap and foundational ADRs.
@@ -36,8 +36,8 @@ No production application capability should be assumed. The following remain fut
 
 The transactional-outbox foundation does not yet include a dispatcher, queue delivery or consumers. The Rust core API remains provisional until the first secure vertical slice validates maintainability and ecosystem fit.
 
-## Next phase after the exit gate
-**Phase 2 — Spaces, identity and authorization**, following ADR-0011 so access control exists before media upload.
+## Active Phase 2 milestone
+**M2.1 — Domain model and invariants.** Define authoritative Space, membership, invitation and capability rules before identity/session or transport implementation.
 
 ## Owner decisions pending
 None required to close the engineering foundation. Production hosting, object-storage provider and related cost/geography decisions remain intentionally deferred until measured requirements exist.
