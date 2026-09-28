@@ -299,6 +299,86 @@ mod tests {
     }
 
     #[sqlx::test(migrations = "./migrations")]
+    async fn failed_audit_insert_rolls_back_space_and_owner(pool: PgPool) {
+        let identity = create_identity(&pool).await;
+        let session = identity_session(&pool, identity).await;
+
+        let existing_space = Uuid::new_v4();
+        sqlx::query(
+            "INSERT INTO spaces (id, name, created_by_identity_id)
+             VALUES ($1, 'Existing Audit', $2)",
+        )
+        .bind(existing_space)
+        .bind(identity)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        let existing_membership = Uuid::new_v4();
+        sqlx::query(
+            "INSERT INTO memberships (id, space_id, identity_id, role)
+             VALUES ($1, $2, $3, 'owner')",
+        )
+        .bind(existing_membership)
+        .bind(existing_space)
+        .bind(identity)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        let existing_audit = Uuid::new_v4();
+        sqlx::query(
+            "INSERT INTO audit_events
+             (id, space_id, actor_identity_id, actor_membership_id, event_type, correlation_id)
+             VALUES ($1, $2, $3, $4, 'space.created', $5)",
+        )
+        .bind(existing_audit)
+        .bind(existing_space)
+        .bind(identity)
+        .bind(existing_membership)
+        .bind(Uuid::new_v4())
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        let attempted_space = Uuid::new_v4();
+        let attempted_membership = Uuid::new_v4();
+        let result = create_space_with_ids(
+            &pool,
+            &session,
+            "Audit Must Roll Back",
+            Uuid::new_v4(),
+            NewSpaceIds {
+                space_id: attempted_space,
+                owner_membership_id: attempted_membership,
+                audit_event_id: existing_audit,
+            },
+        )
+        .await;
+
+        assert!(matches!(result, Err(CreateSpaceError::Storage(_))));
+
+        let space_count =
+            sqlx::query_scalar::<_, i64>("SELECT count(*) FROM spaces WHERE id = $1")
+                .bind(attempted_space)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        let membership_count =
+            sqlx::query_scalar::<_, i64>("SELECT count(*) FROM memberships WHERE id = $1")
+                .bind(attempted_membership)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+
+        assert_eq!(space_count, 0, "audit failure must roll back the Space");
+        assert_eq!(
+            membership_count, 0,
+            "audit failure must roll back the owner membership"
+        );
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
     async fn failed_owner_membership_insert_rolls_back_space(pool: PgPool) {
         let identity = create_identity(&pool).await;
         let session = identity_session(&pool, identity).await;
