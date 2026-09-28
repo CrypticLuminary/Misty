@@ -1,5 +1,5 @@
 use axum::{Json, Router, extract::State, http::StatusCode, routing::get};
-use misty_api::config::Config;
+use misty_api::{config::Config, http_api::{self, ApiState}};
 use serde::Serialize;
 use sqlx::{PgPool, postgres::PgPoolOptions};
 use tower_http::{
@@ -73,11 +73,17 @@ async fn main() {
             std::process::exit(4);
         });
 
-    let state = AppState { database };
+    let state = AppState {
+        database: database.clone(),
+    };
+    let product_api = http_api::router(ApiState {
+        database: database.clone(),
+    });
     let app = Router::new()
         .route("/health", get(health))
         .route("/ready", get(ready))
         .with_state(state)
+        .merge(product_api)
         .layer(PropagateRequestIdLayer::x_request_id())
         .layer(SetRequestIdLayer::x_request_id(MakeRequestUuid))
         .layer(TraceLayer::new_for_http());
