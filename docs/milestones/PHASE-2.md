@@ -30,15 +30,19 @@ This phase intentionally comes before media upload. Upload authorization is unsa
 
 **Evidence:** identities are neutral principals while role/display-name state is Space-membership scoped. Session issuance generates 256-bit OS-random opaque credentials, stores only 32-byte SHA-256 verifiers, rejects malformed credentials before database access, binds scoped sessions to the exact active membership identity, and denies expired, revoked, or removed access. Exact implementation commit `c5d7598451a5699fe9656257e61b787021b9f43d` passed CI `36427736526`, Security `36427736343`, and CodeQL `36427736345`.
 
-## M2.3 Space use cases
-- [ ] Create Space.
-- [ ] Read Space summary.
+## M2.3 Authorization kernel and Space use cases
+- [ ] Add the central deny-by-default capability evaluator before protected Space operations.
+- [ ] Make role presets map explicitly to capabilities; roles are not the authorization boundary.
+- [ ] Create Space and owner membership atomically.
+- [ ] Read Space summary through the shared authorization boundary.
 - [ ] List current member's Spaces where appropriate.
-- [ ] Archive Space.
+- [ ] Archive Space through the shared authorization boundary.
 - [ ] Reject writes to non-ACTIVE Spaces unless explicitly allowed.
-- [ ] Record audit events for sensitive transitions.
+- [ ] Prevent ownerless active Spaces through authoritative use-case rules.
+- [ ] Record audit events in the same transaction/outbox boundary as sensitive transitions.
+- [ ] Add cross-Space negative tests for the Space operations introduced here.
 
-**Gate:** use cases are transport-independent and authorization is not embedded only in handlers.
+**Gate:** protected Space use cases are transport-independent, deny by default, and cannot be called successfully without the same central authorization boundary.
 
 ## M2.4 Invitations and joining
 - [ ] Generate cryptographically unpredictable invitation secrets.
@@ -52,7 +56,9 @@ This phase intentionally comes before media upload. Upload authorization is unsa
 
 **Gate:** possession of an asset/Space/member ID alone never grants access; invitation secrets are scoped and revocable.
 
-## M2.5 Capability authorization
+## M2.5 Capability authorization hardening
+M2.3 introduces the authorization kernel because protected use cases must not precede it. This milestone proves that the boundary remains complete as invitations and joining add more paths.
+
 Initial vocabulary:
 - `can_view`
 - `can_upload`
@@ -67,11 +73,11 @@ Initial vocabulary:
 - `can_view_location`
 
 Tasks:
-- [ ] Central capability evaluator.
-- [ ] Role presets map to capabilities.
-- [ ] Every protected use case invokes the same authorization boundary.
-- [ ] Deny-by-default behavior.
-- [ ] Cross-Space authorization property/invariant tests.
+- [ ] Verify every protected Phase 2 use case invokes the same authorization boundary.
+- [ ] Add invitation/join capability cases without bypass paths.
+- [ ] Add deny-by-default regression tests for newly introduced capabilities.
+- [ ] Add broader cross-Space authorization property/invariant tests.
+- [ ] Review the vocabulary and remove/rename presets that encode identity/account status rather than access policy.
 
 **Gate:** frontend hiding is never required for security and authorization tests cover negative cases.
 
