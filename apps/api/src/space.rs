@@ -276,14 +276,7 @@ pub async fn archive_space(
     space_id: Uuid,
     correlation_id: Uuid,
 ) -> Result<SpaceSummary, ArchiveSpaceError> {
-    archive_space_with_audit_id(
-        pool,
-        session,
-        space_id,
-        correlation_id,
-        Uuid::new_v4(),
-    )
-    .await
+    archive_space_with_audit_id(pool, session, space_id, correlation_id, Uuid::new_v4()).await
 }
 
 async fn archive_space_with_audit_id(
@@ -801,12 +794,13 @@ mod tests {
 
         assert_eq!(archived.state(), SpaceState::Archived);
 
-        let has_archived_at =
-            sqlx::query_scalar::<_, bool>("SELECT archived_at IS NOT NULL FROM spaces WHERE id = $1")
-                .bind(created.space_id())
-                .fetch_one(&pool)
-                .await
-                .unwrap();
+        let has_archived_at = sqlx::query_scalar::<_, bool>(
+            "SELECT archived_at IS NOT NULL FROM spaces WHERE id = $1",
+        )
+        .bind(created.space_id())
+        .fetch_one(&pool)
+        .await
+        .unwrap();
         assert!(has_archived_at);
 
         let audit = sqlx::query_as::<_, (String, Uuid)>(
@@ -867,7 +861,10 @@ mod tests {
         .unwrap();
 
         assert_eq!(state.0, "active");
-        assert!(state.1, "rolled-back archive must not leave archived_at set");
+        assert!(
+            state.1,
+            "rolled-back archive must not leave archived_at set"
+        );
 
         let archived_events = sqlx::query_scalar::<_, i64>(
             "SELECT count(*)
@@ -905,22 +902,15 @@ mod tests {
         let member_session = identity_session(&pool, member).await;
 
         assert!(matches!(
-            archive_space(
-                &pool,
-                &member_session,
-                created.space_id(),
-                Uuid::new_v4()
-            )
-            .await,
+            archive_space(&pool, &member_session, created.space_id(), Uuid::new_v4()).await,
             Err(ArchiveSpaceError::Denied)
         ));
 
-        let state =
-            sqlx::query_scalar::<_, String>("SELECT state::text FROM spaces WHERE id = $1")
-                .bind(created.space_id())
-                .fetch_one(&pool)
-                .await
-                .unwrap();
+        let state = sqlx::query_scalar::<_, String>("SELECT state::text FROM spaces WHERE id = $1")
+            .bind(created.space_id())
+            .fetch_one(&pool)
+            .await
+            .unwrap();
         assert_eq!(state, "active");
     }
 
