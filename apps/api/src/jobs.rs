@@ -30,8 +30,8 @@ impl JobEnvelope {
 pub async fn enqueue(pool: &PgPool, job: &JobEnvelope) -> Result<(), sqlx::Error> {
     let payload =
         serde_json::to_value(job).map_err(|error| sqlx::Error::Encode(Box::new(error)))?;
-    let schema_version = i16::try_from(job.schema_version)
-        .map_err(|error| sqlx::Error::Encode(Box::new(error)))?;
+    let schema_version =
+        i16::try_from(job.schema_version).map_err(|error| sqlx::Error::Encode(Box::new(error)))?;
 
     sqlx::query(
         r#"
@@ -97,7 +97,10 @@ mod tests {
         .fetch_one(&pool)
         .await?;
 
-        assert_eq!(row.0, i16::try_from(JOB_SCHEMA_VERSION).expect("schema version must fit SMALLINT"));
+        assert_eq!(
+            row.0,
+            i16::try_from(JOB_SCHEMA_VERSION).expect("schema version must fit SMALLINT")
+        );
         assert_eq!(row.1, job.job_type);
         assert_eq!(row.2, job.entity_id);
         assert_eq!(row.3, job.correlation_id);
