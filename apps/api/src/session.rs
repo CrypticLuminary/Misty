@@ -7,6 +7,7 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 const SESSION_SECRET_BYTES: usize = 32;
+const SESSION_SECRET_ENCODED_LEN: usize = 43;
 
 pub struct IssuedSession {
     session_id: Uuid,
@@ -49,8 +50,14 @@ struct SessionVerifier([u8; 32]);
 
 impl SessionVerifier {
     fn from_raw_secret(raw_secret: &str) -> Option<Self> {
+        if raw_secret.len() != SESSION_SECRET_ENCODED_LEN {
+            return None;
+        }
+
         let decoded = URL_SAFE_NO_PAD.decode(raw_secret.as_bytes()).ok()?;
-        if decoded.len() != SESSION_SECRET_BYTES {
+        if decoded.len() != SESSION_SECRET_BYTES
+            || URL_SAFE_NO_PAD.encode(&decoded) != raw_secret
+        {
             return None;
         }
 
@@ -64,7 +71,7 @@ impl SessionVerifier {
         Self::from_raw_secret(&secret.0).expect("generated session secret must be valid")
     }
 
-    const fn as_bytes(&self) -> &[u8; 32] {
+    fn as_bytes(&self) -> &[u8] {
         &self.0
     }
 }
@@ -97,8 +104,9 @@ pub async fn issue_session(
     scope: SessionScope,
     ttl: Duration,
 ) -> Result<IssuedSession, SessionIssuanceError> {
-    let ttl_seconds = ttl.as_secs_f64();
-    if ttl_seconds <= 0.0 {
+    let ttl_seconds =
+        i32::try_from(ttl.as_secs()).map_err(|_| SessionIssuanceError::InvalidTtl)?;
+    if ttl_seconds <= 0 {
         return Err(SessionIssuanceError::InvalidTtl);
     }
 
@@ -131,10 +139,10 @@ pub async fn issue_session(
     )
     .bind(session_id)
     .bind(identity_id)
-    .bind(verifier.as_bytes().as_slice())
+    .bind(verifier.as_bytes())
     .bind(space_id)
     .bind(membership_id)
-    .bind(ttl_seconds)
+    .bind(f64::from(ttl_seconds))
     .fetch_optional(pool)
     .await
     .map_err(SessionIssuanceError::Storage)?;
@@ -168,7 +176,7 @@ pub async fn resolve_session(
                OR m.state = 'active'
            )",
     )
-    .bind(verifier.as_bytes().as_slice())
+    .bind(verifier.as_bytes())
     .fetch_optional(pool)
     .await
     .map_err(SessionResolutionError::Storage)?;
@@ -226,6 +234,7 @@ mod tests {
                 .decode(secret.0.as_bytes())
                 .expect("generated credential should be base64url");
             assert_eq!(decoded.len(), SESSION_SECRET_BYTES);
+            assert_eq!(secret.0.len(), SESSION_SECRET_ENCODED_LEN);
             assert!(seen.insert(secret.0));
         }
     }
@@ -237,7 +246,7 @@ mod tests {
         let second = SessionVerifier::from_raw_secret(&secret.0).unwrap();
 
         assert_eq!(first.as_bytes(), second.as_bytes());
-        assert_ne!(first.as_bytes().as_slice(), secret.0.as_bytes());
+        assert_ne!(first.as_bytes(), secret.0.as_bytes());
     }
 
     #[sqlx::test(migrations = "./migrations")]
@@ -305,7 +314,7 @@ mod tests {
         )
         .bind(Uuid::new_v4())
         .bind(identity)
-        .bind(verifier.as_bytes().as_slice())
+        .bind(verifier.as_bytes())
         .execute(&pool)
         .await
         .expect("historically valid expired session should be created");
@@ -354,7 +363,7 @@ mod tests {
         )
         .bind(Uuid::new_v4())
         .bind(second_identity)
-        .bind(verifier.as_bytes().as_slice())
+        .bind(verifier.as_bytes())
         .bind(space)
         .bind(membership)
         .execute(&pool)
