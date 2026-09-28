@@ -10,7 +10,10 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::{
-    access_use_cases::{AccessError, issue_invitation, join_with_invitation},
+    access_use_cases::{
+        AccessError, authenticate_session, create_account_session_for_bootstrap, issue_invitation,
+        join_with_invitation,
+    },
     authorization::{Capability, Role},
     space_authorization::require_capability,
     space_use_cases::create_space,
@@ -67,6 +70,7 @@ struct ErrorBody {
 
 pub fn router(state: ApiState) -> Router {
     Router::new()
+        .route("/v1/dev/bootstrap-session", post(bootstrap_session_handler))
         .route("/v1/spaces", post(create_space_handler))
         .route("/v1/spaces/{space_id}", get(get_space_handler))
         .route("/v1/spaces/{space_id}/invitations", post(create_invitation_handler))
@@ -74,12 +78,32 @@ pub fn router(state: ApiState) -> Router {
         .with_state(state)
 }
 
+async fn bootstrap_session_handler(
+    State(state): State<ApiState>,
+) -> Result<(StatusCode, Json<JoinResponse>), (StatusCode, Json<ErrorBody>)> {
+    if std::env::var("MISTY_ENABLE_DEV_BOOTSTRAP").as_deref() != Ok("true") {
+        return Err(not_found());
+    }
+    let session = create_account_session_for_bootstrap(&state.database)
+        .await
+        .map_err(map_access_error)?;
+    Ok((
+        StatusCode::CREATED,
+        Json(JoinResponse {
+            subject_id: session.subject_id,
+            session_id: session.session_id,
+            session_secret: session.secret,
+            expires_at: session.expires_at.to_rfc3339(),
+        }),
+    ))
+}
+
 async fn create_space_handler(
     State(state): State<ApiState>,
     headers: HeaderMap,
     Json(input): Json<CreateSpaceRequest>,
 ) -> Result<(StatusCode, Json<SpaceResponse>), (StatusCode, Json<ErrorBody>)> {
-    let subject_id = subject_from_headers(&headers)?;
+    let subject_id = subject_from_headers(&state.database, &headers).await?;
     let id = create_space(
         &state.database,
         subject_id,
@@ -104,7 +128,7 @@ async fn get_space_handler(
     headers: HeaderMap,
     Path(space_id): Path<Uuid>,
 ) -> Result<Json<SpaceResponse>, (StatusCode, Json<ErrorBody>)> {
-    let subject_id = subject_from_headers(&headers)?;
+    let subject_id = subject_from_headers(&state.database, &headers).await?;
     require_capability(&state.database, subject_id, space_id, Capability::View)
         .await
         .map_err(|_| unauthorized())?;
@@ -125,7 +149,7 @@ async fn create_invitation_handler(
     Path(space_id): Path<Uuid>,
     Json(input): Json<CreateInvitationRequest>,
 ) -> Result<(StatusCode, Json<InvitationResponse>), (StatusCode, Json<ErrorBody>)> {
-    let subject_id = subject_from_headers(&headers)?;
+    let subject_id = subject_from_headers(&state.database, &headers).await?;
     let invitation = issue_invitation(
         &state.database,
         subject_id,
@@ -171,15 +195,19 @@ async fn join_handler(
     ))
 }
 
-fn subject_from_headers(headers: &HeaderMap) -> Result<Uuid, (StatusCode, Json<ErrorBody>)> {
-    // Temporary Phase-2 bootstrap identity. This header is intentionally NOT a production
-    // authentication mechanism and must be replaced by account/session auth before deployment.
-    let value = headers
-        .get("x-misty-subject")
+async fn subject_from_headers(
+    pool: &PgPool,
+    headers: &HeaderMap,
+) -> Result<Uuid, (StatusCode, Json<ErrorBody>)> {
+    let credential = headers
+        .get("authorization")
         .and_then(|value| value.to_str().ok())
-        .and_then(|value| Uuid::parse_str(value).ok())
+        .and_then(|value| value.strip_prefix("Bearer "))
         .ok_or_else(unauthorized)?;
-    Ok(value)
+
+    authenticate_session(pool, credential)
+        .await
+        .map_err(|_| unauthorized())
 }
 
 fn map_access_error(error: AccessError) -> (StatusCode, Json<ErrorBody>) {
