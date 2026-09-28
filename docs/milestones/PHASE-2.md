@@ -20,13 +20,15 @@ This phase intentionally comes before media upload. Upload authorization is unsa
 **Evidence:** `0002_secure_space_access.sql` enforces lifecycle shape, active-owner/membership uniqueness, invitation verifier constraints and same-Space invitation creators. `domain.rs` rejects invalid transitions and includes PostgreSQL integration tests for the critical constraints.
 
 ## M2.2 Identity and sessions
-- [ ] Establish owner identity/session foundation.
-- [ ] Establish scoped guest sessions without requiring a full account.
-- [ ] Use secure server-side session meaning; browser state alone never authorizes.
-- [ ] Define cookie/CSRF strategy for the deployed topology before mutating browser endpoints.
-- [ ] Add session expiry/revocation behavior and tests.
+- [x] Establish owner identity/session foundation.
+- [x] Establish scoped guest sessions without requiring a full account.
+- [x] Use secure server-side session meaning; browser state alone never authorizes.
+- [x] Define cookie/CSRF strategy for the deployed topology before mutating browser endpoints.
+- [x] Add session expiry/revocation behavior and tests.
 
 **Gate:** an anonymous browser cannot become a member or perform protected operations without a valid server-recognized flow.
+
+**Evidence:** identities are neutral principals while role/display-name state is Space-membership scoped. Session issuance generates 256-bit OS-random opaque credentials, stores only 32-byte SHA-256 verifiers, rejects malformed credentials before database access, binds scoped sessions to the exact active membership identity, and denies expired, revoked, or removed access. Exact implementation commit `c5d7598451a5699fe9656257e61b787021b9f43d` passed CI `36427736526`, Security `36427736343`, and CodeQL `36427736345`.
 
 ## M2.3 Space use cases
 - [ ] Create Space.
