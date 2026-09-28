@@ -12,7 +12,7 @@ use uuid::Uuid;
 use crate::{
     access_use_cases::{
         AccessError, authenticate_session, create_account_session_for_bootstrap, issue_invitation,
-        join_with_invitation,
+        join_with_invitation, revoke_invitation,
     },
     authorization::{Capability, Role},
     space_authorization::require_capability,
@@ -73,6 +73,7 @@ pub fn router(state: ApiState) -> Router {
         .route("/v1/spaces", post(create_space_handler))
         .route("/v1/spaces/{space_id}", get(get_space_handler))
         .route("/v1/spaces/{space_id}/invitations", post(create_invitation_handler))
+        .route("/v1/spaces/{space_id}/invitations/{invitation_id}/revoke", post(revoke_invitation_handler))
         .route("/v1/join", post(join_handler));
 
     let router = if std::env::var("MISTY_ENABLE_DEV_BOOTSTRAP").as_deref() == Ok("true") {
@@ -175,6 +176,24 @@ async fn create_invitation_handler(
             expires_at: invitation.expires_at.to_rfc3339(),
         }),
     ))
+}
+
+async fn revoke_invitation_handler(
+    State(state): State<ApiState>,
+    headers: HeaderMap,
+    Path((space_id, invitation_id)): Path<(Uuid, Uuid)>,
+) -> Result<StatusCode, (StatusCode, Json<ErrorBody>)> {
+    let subject_id = subject_from_headers(&state.database, &headers).await?;
+    revoke_invitation(
+        &state.database,
+        subject_id,
+        space_id,
+        invitation_id,
+        Uuid::new_v4(),
+    )
+    .await
+    .map_err(map_access_error)?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 async fn join_handler(
