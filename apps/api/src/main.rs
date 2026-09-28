@@ -1,5 +1,7 @@
+mod authorization;
 mod config;
 mod jobs;
+mod spaces;
 
 use axum::{Json, Router, extract::State, http::StatusCode, routing::get};
 use config::Config;
