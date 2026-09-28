@@ -116,13 +116,17 @@ mod tests {
         let identity = Uuid::new_v4();
         create_identity(&pool, identity).await;
         let hash = vec![8_u8; 32];
-        let session_id = create_session(&pool, identity, hash.clone()).await;
-
-        sqlx::query("UPDATE sessions SET expires_at = now() - interval '1 second' WHERE id = $1")
-            .bind(session_id)
-            .execute(&pool)
-            .await
-            .unwrap();
+        let session_id = Uuid::new_v4();
+        sqlx::query(
+            "INSERT INTO sessions (id, identity_id, secret_hash, created_at, expires_at)
+             VALUES ($1, $2, $3, now() - interval '2 hours', now() - interval '1 hour')",
+        )
+        .bind(session_id)
+        .bind(identity)
+        .bind(hash.clone())
+        .execute(&pool)
+        .await
+        .expect("historically valid expired session should be created");
 
         assert_eq!(
             resolve_session(&pool, &hash).await,
