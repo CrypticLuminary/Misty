@@ -1,8 +1,6 @@
 use sqlx::{PgPool, Postgres, Transaction};
 use uuid::Uuid;
 
-use crate::authorization::Role;
-
 #[derive(Debug)]
 pub enum SpaceError {
     InvalidName,
@@ -84,11 +82,6 @@ async fn ensure_subject(
     .await?;
 
     Ok(())
-}
-
-#[allow(dead_code)]
-fn _role_contract(role: Role) -> Role {
-    role
 }
 
 #[cfg(test)]
