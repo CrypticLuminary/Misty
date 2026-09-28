@@ -31,8 +31,16 @@ pub fn role_allows(role: Role, capability: Capability) -> bool {
         Role::Owner => true,
         Role::Admin => matches!(
             capability,
-            View | Upload | Download | DownloadOriginal | DeleteOwn | DeleteAny | Invite
-                | ManageMembers | ManageSpace | EnableAi | ViewLocation
+            View | Upload
+                | Download
+                | DownloadOriginal
+                | DeleteOwn
+                | DeleteAny
+                | Invite
+                | ManageMembers
+                | ManageSpace
+                | EnableAi
+                | ViewLocation
         ),
         Role::Contributor => matches!(
             capability,
@@ -76,6 +84,10 @@ mod tests {
             Capability::ViewLocation,
         ];
 
-        assert!(capabilities.into_iter().all(|capability| role_allows(Role::Owner, capability)));
+        assert!(
+            capabilities
+                .into_iter()
+                .all(|capability| role_allows(Role::Owner, capability))
+        );
     }
 }
