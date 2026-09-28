@@ -6,7 +6,7 @@ Last updated: 2026-09-28
 **Phase 2 — Secure Space Access (active)**
 
 ## Current milestone
-**M2.3 — Space use cases**
+**M2.3 — Authorization kernel and Space use cases**
 
 ## Completed and verified
 - Product invariants, architecture, security guidance, engineering rules, roadmap and foundational ADRs.
@@ -41,7 +41,7 @@ No production application capability should be assumed. The following remain fut
 The transactional-outbox foundation does not yet include a dispatcher, queue delivery or consumers. The Rust core API remains provisional until the first secure vertical slice validates maintainability and ecosystem fit.
 
 ## Active Phase 2 milestone
-**M2.3 — Space use cases.** Implement transport-independent create/read/list/archive operations, enforce ACTIVE-only writes, and record sensitive audit transitions before exposing HTTP routes.
+**M2.3 — Authorization kernel and Space use cases.** Establish the deny-by-default capability boundary first, then implement transport-independent create/read/list/archive operations with owner-integrity, ACTIVE-only writes, cross-Space negative tests and transactional audit evidence before exposing HTTP routes.
 
 ## Owner decisions pending
 None required to close the engineering foundation. Production hosting, object-storage provider and related cost/geography decisions remain intentionally deferred until measured requirements exist.
