@@ -198,6 +198,14 @@ mod database_tests {
 
     async fn create_membership(pool: &PgPool, id: Uuid, space_id: Uuid, identity_id: Uuid) {
         sqlx::query(
+            "INSERT INTO identities (id, kind) VALUES ($1, 'owner') ON CONFLICT (id) DO NOTHING",
+        )
+        .bind(identity_id)
+        .execute(pool)
+        .await
+        .expect("membership identity should exist");
+
+        sqlx::query(
             "INSERT INTO memberships (id, space_id, identity_id, role) VALUES ($1, $2, $3, 'owner')",
         )
         .bind(id)
