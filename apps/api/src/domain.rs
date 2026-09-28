@@ -258,13 +258,11 @@ mod database_tests {
     }
 
     async fn create_space(pool: &PgPool, id: Uuid, creator: Uuid) {
-        sqlx::query(
-            "INSERT INTO identities (id) VALUES ($1) ON CONFLICT (id) DO NOTHING",
-        )
-        .bind(creator)
-        .execute(pool)
-        .await
-        .expect("creator identity should exist");
+        sqlx::query("INSERT INTO identities (id) VALUES ($1) ON CONFLICT (id) DO NOTHING")
+            .bind(creator)
+            .execute(pool)
+            .await
+            .expect("creator identity should exist");
 
         sqlx::query(
             "INSERT INTO spaces (id, name, created_by_identity_id) VALUES ($1, 'Test Space', $2)",
@@ -277,13 +275,11 @@ mod database_tests {
     }
 
     async fn create_membership(pool: &PgPool, id: Uuid, space_id: Uuid, identity_id: Uuid) {
-        sqlx::query(
-            "INSERT INTO identities (id) VALUES ($1) ON CONFLICT (id) DO NOTHING",
-        )
-        .bind(identity_id)
-        .execute(pool)
-        .await
-        .expect("membership identity should exist");
+        sqlx::query("INSERT INTO identities (id) VALUES ($1) ON CONFLICT (id) DO NOTHING")
+            .bind(identity_id)
+            .execute(pool)
+            .await
+            .expect("membership identity should exist");
 
         sqlx::query(
             "INSERT INTO memberships (id, space_id, identity_id, role) VALUES ($1, $2, $3, 'owner')",
@@ -376,11 +372,7 @@ mod database_tests {
         .execute(&pool)
         .await;
 
-        assert_pg_error_code(
-            duplicate,
-            "23505",
-            "a Space cannot have two active owners",
-        );
+        assert_pg_error_code(duplicate, "23505", "a Space cannot have two active owners");
     }
 
     #[sqlx::test(migrations = "./migrations")]
@@ -516,11 +508,7 @@ mod database_tests {
         .bind(vec![4_u8; 32])
         .execute(&pool)
         .await;
-        assert_pg_error_code(
-            expired,
-            "23514",
-            "session expiry must be after creation",
-        );
+        assert_pg_error_code(expired, "23514", "session expiry must be after creation");
 
         let verifier = vec![5_u8; 32];
         for attempt in 0..2 {
