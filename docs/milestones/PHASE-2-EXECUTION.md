@@ -42,14 +42,20 @@ For every task ask:
 ## M2.3 — Authorization kernel + Space vertical slice
 
 ### P2-T01 Central authorization kernel
-- [ ] Authorization accepts authenticated session context, not caller-selected identity.
-- [ ] Scoped sessions cannot gain ambient authority in another Space.
-- [ ] Active membership is required.
-- [ ] Role preset maps explicitly to requested capability.
-- [ ] Deny by default.
-- [ ] Cross-Space and scoped-session negative integration tests.
-- [ ] Review A complete.
-- [ ] Review B complete.
+- [x] Authorization accepts authenticated session context, not caller-selected identity.
+- [x] Scoped sessions cannot gain ambient authority in another Space.
+- [x] Active membership is required.
+- [x] Role preset maps explicitly to requested capability.
+- [x] Deny by default.
+- [x] Cross-Space and scoped-session negative integration tests.
+- [x] Review A complete.
+- [x] Review B complete.
+
+**Evidence:** implementation commit `f1afadc87d653249af24516c9caf843884d2fbbb` passed CI `36435238753`, Security `36435238811`, and CodeQL `36435238765`.
+
+**Review A:** passed after fixing a TOCTOU risk found during review. The evaluator now uses the caller-owned PostgreSQL connection and locks the active authorizing membership with `FOR SHARE`; protected mutations must authorize and mutate in the same transaction. Tests cover scoped-session cross-Space denial, inactive membership denial, creator-provenance non-authority, role capability denial and lock behavior.
+
+**Review B:** accepted. The boundary remains `AuthenticatedSession → active Membership → role preset → Capability`; no persisted ACL matrix, RLS policy layer or HTTP-specific authorization was introduced. This is the smallest model that supports the Phase 2 product flow and leaves later capability evolution centralized.
 
 ### P2-T02 Create Space atomically
 - [ ] Validate/normalize Space name.
