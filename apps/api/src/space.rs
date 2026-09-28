@@ -342,6 +342,7 @@ async fn archive_space_with_audit_id(
     })
 }
 
+#[cfg(test)]
 pub(crate) async fn lock_active_space_for_write(
     connection: &mut sqlx::PgConnection,
     space_id: Uuid,
