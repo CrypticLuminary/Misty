@@ -1,3 +1,4 @@
+pub mod access_use_cases;
 pub mod authorization;
 pub mod config;
 pub mod invitations;
