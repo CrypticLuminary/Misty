@@ -4,7 +4,7 @@
 Git, Docker with Compose, Rust stable, Node.js 24 + pnpm 10.17.1, and Python 3.12+ with uv 0.8.17.
 
 ## Local dependencies
-Copy `.env.example` to `.env` for local development only, then:
+Copy `.env.example` to `.env` for local development only. Docker Compose reads `.env` automatically. Host-run Rust/Python processes do not, so export the needed variables into your shell before starting them (for Bash: `set -a; . ./.env; set +a`; for PowerShell, set the corresponding `$env:...` values). Then:
 
 ```sh
 docker compose pull
