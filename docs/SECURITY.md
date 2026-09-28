@@ -45,5 +45,7 @@ No secrets in source control. CI must scan for accidental credentials. Productio
 ## Logging
 Use structured logs with correlation IDs. Never log credentials, auth tokens, signed URLs, raw private media, or unnecessary sensitive EXIF.
 
+Audit-event metadata follows the same rule: fields are explicitly allowlisted per event and must never contain raw session/invitation secrets, signed URLs, private media, CSRF material or arbitrary request bodies. A correlation ID is diagnostic context, never authorization.
+
 ## CI security gates
 Dependency review/audit, static analysis, secret scanning, type/lint/test gates and container scanning as containers appear. Dynamic security testing is introduced when a runnable HTTP surface exists.
