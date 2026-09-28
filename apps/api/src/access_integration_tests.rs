@@ -135,3 +135,62 @@ async fn malformed_invitation_is_indistinguishable_from_unavailable_invite(pool:
         Err(AccessError::InviteUnavailable)
     ));
 }
+
+#[sqlx::test(migrations = "./migrations")]
+async fn phase_two_invitation_is_single_use(pool: PgPool) {
+    let owner = Uuid::new_v4();
+    let space = create_space(&pool, owner, "Owner", "Trip", Uuid::new_v4())
+        .await
+        .expect("space");
+    let invitation = issue_invitation(
+        &pool,
+        owner,
+        space,
+        Role::Viewer,
+        Duration::hours(1),
+        Uuid::new_v4(),
+    )
+    .await
+    .expect("invitation");
+
+    join_with_invitation(&pool, &invitation.secret, "First Guest", Uuid::new_v4())
+        .await
+        .expect("first join");
+
+    assert!(matches!(
+        join_with_invitation(&pool, &invitation.secret, "Replay Guest", Uuid::new_v4()).await,
+        Err(AccessError::InviteUnavailable)
+    ));
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn expired_session_is_rejected(pool: PgPool) {
+    let owner = Uuid::new_v4();
+    let space = create_space(&pool, owner, "Owner", "Trip", Uuid::new_v4())
+        .await
+        .expect("space");
+    let invitation = issue_invitation(
+        &pool,
+        owner,
+        space,
+        Role::Viewer,
+        Duration::hours(1),
+        Uuid::new_v4(),
+    )
+    .await
+    .expect("invitation");
+    let session = join_with_invitation(&pool, &invitation.secret, "Guest", Uuid::new_v4())
+        .await
+        .expect("join");
+
+    sqlx::query("UPDATE sessions SET expires_at = now() - interval '1 second' WHERE id = $1")
+        .bind(session.session_id)
+        .execute(&pool)
+        .await
+        .expect("expire");
+
+    assert!(matches!(
+        authenticate_session(&pool, &session.secret).await,
+        Err(AccessError::Unauthorized)
+    ));
+}
