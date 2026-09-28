@@ -2,13 +2,15 @@
 
 CREATE TABLE identities (
     id UUID PRIMARY KEY,
-    display_name TEXT,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+ALTER TABLE memberships
+    ADD COLUMN display_name TEXT
     CHECK (
         display_name IS NULL
         OR char_length(btrim(display_name)) BETWEEN 1 AND 80
-    )
-);
+    );
 
 ALTER TABLE spaces
     ADD CONSTRAINT spaces_creator_identity_fk
