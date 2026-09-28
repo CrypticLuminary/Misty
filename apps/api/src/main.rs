@@ -1,3 +1,5 @@
+#[cfg(test)]
+mod access_integration_tests;
 mod authorization;
 mod config;
 mod invitations;
