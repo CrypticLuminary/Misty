@@ -46,6 +46,23 @@ impl MembershipState {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum InvitationState {
+    Active,
+    Revoked,
+    Exhausted,
+}
+
+impl InvitationState {
+    pub fn transition_to(self, next: Self) -> Result<Self, DomainError> {
+        match (self, next) {
+            (Self::Active, Self::Revoked) | (Self::Active, Self::Exhausted) => Ok(next),
+            _ => Err(DomainError::InvalidTransition),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Capability {
     View,
@@ -71,16 +88,44 @@ pub enum RolePreset {
 impl RolePreset {
     pub const fn allows(self, capability: Capability) -> bool {
         match self {
-            Self::Owner => true,
-            Self::Member => matches!(
-                capability,
+            Self::Owner => match capability {
                 Capability::View
-                    | Capability::Upload
-                    | Capability::Download
-                    | Capability::DownloadOriginal
-                    | Capability::DeleteOwn
-            ),
-            Self::Guest => matches!(capability, Capability::View | Capability::Upload),
+                | Capability::Upload
+                | Capability::Download
+                | Capability::DownloadOriginal
+                | Capability::DeleteOwn
+                | Capability::DeleteAny
+                | Capability::Invite
+                | Capability::ManageMembers
+                | Capability::ManageSpace
+                | Capability::EnableAi
+                | Capability::ViewLocation => true,
+            },
+            Self::Member => match capability {
+                Capability::View
+                | Capability::Upload
+                | Capability::Download
+                | Capability::DownloadOriginal
+                | Capability::DeleteOwn => true,
+                Capability::DeleteAny
+                | Capability::Invite
+                | Capability::ManageMembers
+                | Capability::ManageSpace
+                | Capability::EnableAi
+                | Capability::ViewLocation => false,
+            },
+            Self::Guest => match capability {
+                Capability::View | Capability::Upload => true,
+                Capability::Download
+                | Capability::DownloadOriginal
+                | Capability::DeleteOwn
+                | Capability::DeleteAny
+                | Capability::Invite
+                | Capability::ManageMembers
+                | Capability::ManageSpace
+                | Capability::EnableAi
+                | Capability::ViewLocation => false,
+            },
         }
     }
 }
@@ -160,6 +205,26 @@ mod tests {
         assert_eq!(session_validity(true, false), SessionValidity::Expired);
         assert_eq!(session_validity(false, true), SessionValidity::Revoked);
         assert_eq!(session_validity(true, true), SessionValidity::Revoked);
+    }
+
+    #[test]
+    fn invitation_terminal_states_cannot_be_reopened() {
+        assert_eq!(
+            InvitationState::Active.transition_to(InvitationState::Revoked),
+            Ok(InvitationState::Revoked)
+        );
+        assert_eq!(
+            InvitationState::Active.transition_to(InvitationState::Exhausted),
+            Ok(InvitationState::Exhausted)
+        );
+        assert_eq!(
+            InvitationState::Revoked.transition_to(InvitationState::Active),
+            Err(DomainError::InvalidTransition)
+        );
+        assert_eq!(
+            InvitationState::Exhausted.transition_to(InvitationState::Active),
+            Err(DomainError::InvalidTransition)
+        );
     }
 
     #[test]
