@@ -90,7 +90,10 @@ mod tests {
         space_id: Uuid,
         capability: Capability,
     ) -> Result<AuthorizationGrant, AuthorizationError> {
-        let mut connection = pool.acquire().await.expect("connection should be available");
+        let mut connection = pool
+            .acquire()
+            .await
+            .expect("connection should be available");
         authorize_space_capability(&mut connection, session, space_id, capability).await
     }
 
@@ -199,9 +202,11 @@ mod tests {
         let membership = create_membership(&pool, space, guest, "guest").await;
         let session = scoped_session(&pool, guest, space, membership).await;
 
-        assert!(authorize(&pool, &session, space, Capability::View)
-            .await
-            .is_ok());
+        assert!(
+            authorize(&pool, &session, space, Capability::View)
+                .await
+                .is_ok()
+        );
         assert!(matches!(
             authorize(&pool, &session, space, Capability::ManageSpace).await,
             Err(AuthorizationError::Denied)
@@ -220,9 +225,11 @@ mod tests {
 
         let session = scoped_session(&pool, identity, first_space, first_membership).await;
 
-        assert!(authorize(&pool, &session, first_space, Capability::View)
-            .await
-            .is_ok());
+        assert!(
+            authorize(&pool, &session, first_space, Capability::View)
+                .await
+                .is_ok()
+        );
         assert!(matches!(
             authorize(&pool, &session, second_space, Capability::View).await,
             Err(AuthorizationError::Denied)
