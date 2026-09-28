@@ -47,7 +47,11 @@ This checklist is evidence-driven. Items are checked only when repository state 
 - [x] Reproducibility review.
 - [x] CI evidence review.
 - [x] Record known limitations.
-- [ ] Run CI + Security + CodeQL on the Phase 1 completion-state documentation commit.
+- [x] Run CI + Security + CodeQL on the Phase 1 completion-state documentation commit.
 
 ## Exit gate
 Phase 1 is complete only when another contributor can clone Misty, understand its invariants, start the documented environment, run deterministic quality gates, observe health checks, and safely begin Phase 2 without relying on conversation history.
+
+
+## Completion evidence
+Commit `4023d932f471d479b6f2d954b1f72a0885b915f2` passed CI run `36385462155`, Security run `36385462159`, and CodeQL run `36385462173` on 2026-09-28.
