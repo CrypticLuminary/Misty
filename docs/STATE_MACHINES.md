@@ -10,6 +10,8 @@ Failure branches may include REJECTED and FAILED with explicit retry semantics. 
 ## Space
 ACTIVE → ARCHIVED → DELETING → DELETED
 
+In Phase 2, ARCHIVED means the Space remains readable to identities that still hold `can_view`, but ordinary content/state writes are no longer accepted unless a later use case explicitly defines an allowed archived-state operation. Archiving is therefore not deletion and must not silently revoke membership access. DELETING/DELETED are separate lifecycle states.
+
 An EXPIRING presentation state may be derived or persisted depending on retention implementation. Do not silently retain data contrary to the user-facing policy.
 
 ## Membership
