@@ -455,7 +455,7 @@ mod database_tests {
     async fn guest_session_membership_must_belong_to_same_space(pool: PgPool) {
         let first_identity = Uuid::new_v4();
         let second_identity = Uuid::new_v4();
-        sqlx::query("INSERT INTO identities (id) VALUES ($1), ($2, 'owner')")
+        sqlx::query("INSERT INTO identities (id) VALUES ($1), ($2)")
             .bind(first_identity)
             .bind(second_identity)
             .execute(&pool)
