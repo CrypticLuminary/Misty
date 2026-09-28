@@ -1,11 +1,20 @@
-use axum::{Json, Router, routing::get};
+mod config;
+mod jobs;
+
+use axum::{Json, Router, extract::State, http::StatusCode, routing::get};
+use config::Config;
 use serde::Serialize;
-use std::net::SocketAddr;
+use sqlx::{PgPool, postgres::PgPoolOptions};
 use tower_http::{
     request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer},
     trace::TraceLayer,
 };
-use tracing::info;
+use tracing::{error, info};
+
+#[derive(Clone)]
+struct AppState {
+    database: PgPool,
+}
 
 #[derive(Serialize)]
 struct Health {
@@ -20,6 +29,21 @@ async fn health() -> Json<Health> {
     })
 }
 
+async fn ready(State(state): State<AppState>) -> Result<Json<Health>, StatusCode> {
+    sqlx::query("SELECT 1")
+        .execute(&state.database)
+        .await
+        .map_err(|error| {
+            error!(%error, "database readiness check failed");
+            StatusCode::SERVICE_UNAVAILABLE
+        })?;
+
+    Ok(Json(Health {
+        status: "ready",
+        service: "misty-api",
+    }))
+}
+
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt()
@@ -30,17 +54,42 @@ async fn main() {
         )
         .init();
 
+    let config = Config::from_env().unwrap_or_else(|error| {
+        error!(%error, "invalid configuration");
+        std::process::exit(2);
+    });
+
+    let database = PgPoolOptions::new()
+        .max_connections(10)
+        .connect(&config.database_url)
+        .await
+        .unwrap_or_else(|error| {
+            error!(%error, "database connection failed");
+            std::process::exit(3);
+        });
+
+    sqlx::migrate!("./migrations")
+        .run(&database)
+        .await
+        .unwrap_or_else(|error| {
+            error!(%error, "database migration failed");
+            std::process::exit(4);
+        });
+
+    let state = AppState { database };
     let app = Router::new()
         .route("/health", get(health))
+        .route("/ready", get(ready))
+        .with_state(state)
         .layer(PropagateRequestIdLayer::x_request_id())
         .layer(SetRequestIdLayer::x_request_id(MakeRequestUuid))
         .layer(TraceLayer::new_for_http());
 
-    let addr = SocketAddr::from(([0, 0, 0, 0], 8080));
-    let listener = tokio::net::TcpListener::bind(addr)
+    let listener = tokio::net::TcpListener::bind(config.bind_addr)
         .await
         .expect("failed to bind API listener");
-    info!(%addr, "misty API listening");
+    info!(addr = %config.bind_addr, "misty API listening");
+
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())
         .await
