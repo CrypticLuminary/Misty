@@ -9,11 +9,16 @@ use crate::{
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AuthorizationGrant {
     membership_id: Uuid,
+    space_id: Uuid,
 }
 
 impl AuthorizationGrant {
     pub const fn membership_id(self) -> Uuid {
         self.membership_id
+    }
+
+    pub const fn space_id(self) -> Uuid {
+        self.space_id
     }
 }
 
@@ -63,7 +68,63 @@ pub async fn authorize_space_capability(
         return Err(AuthorizationError::Denied);
     }
 
-    Ok(AuthorizationGrant { membership_id })
+    Ok(AuthorizationGrant {
+        membership_id,
+        space_id,
+    })
+}
+
+pub async fn list_space_capability_grants(
+    connection: &mut PgConnection,
+    session: &AuthenticatedSession,
+    capability: Capability,
+) -> Result<Vec<AuthorizationGrant>, AuthorizationError> {
+    let rows = match (session.space_id(), session.membership_id()) {
+        (None, None) => {
+            sqlx::query_as::<_, (Uuid, Uuid, String)>(
+                "SELECT id, space_id, role::text
+                 FROM memberships
+                 WHERE identity_id = $1
+                   AND state = 'active'
+                 FOR SHARE",
+            )
+            .bind(session.identity_id())
+            .fetch_all(&mut *connection)
+            .await
+            .map_err(AuthorizationError::Storage)?
+        }
+        (Some(space_id), Some(membership_id)) => {
+            sqlx::query_as::<_, (Uuid, Uuid, String)>(
+                "SELECT id, space_id, role::text
+                 FROM memberships
+                 WHERE id = $1
+                   AND space_id = $2
+                   AND identity_id = $3
+                   AND state = 'active'
+                 FOR SHARE",
+            )
+            .bind(membership_id)
+            .bind(space_id)
+            .bind(session.identity_id())
+            .fetch_all(&mut *connection)
+            .await
+            .map_err(AuthorizationError::Storage)?
+        }
+        (Some(_), None) | (None, Some(_)) => return Err(AuthorizationError::Denied),
+    };
+
+    let mut grants = Vec::with_capacity(rows.len());
+    for (membership_id, space_id, role) in rows {
+        let role = role_preset_from_storage(&role).ok_or(AuthorizationError::InvariantViolation)?;
+        if role.allows(capability) {
+            grants.push(AuthorizationGrant {
+                membership_id,
+                space_id,
+            });
+        }
+    }
+
+    Ok(grants)
 }
 
 fn role_preset_from_storage(role: &str) -> Option<RolePreset> {
@@ -234,6 +295,27 @@ mod tests {
             authorize(&pool, &session, second_space, Capability::View).await,
             Err(AuthorizationError::Denied)
         ));
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn scoped_list_does_not_expand_to_other_memberships(pool: PgPool) {
+        let first_creator = create_identity(&pool).await;
+        let second_creator = create_identity(&pool).await;
+        let identity = create_identity(&pool).await;
+        let first_space = create_space(&pool, first_creator).await;
+        let second_space = create_space(&pool, second_creator).await;
+        let first_membership = create_membership(&pool, first_space, identity, "guest").await;
+        create_membership(&pool, second_space, identity, "member").await;
+        let session = scoped_session(&pool, identity, first_space, first_membership).await;
+
+        let mut connection = pool.acquire().await.unwrap();
+        let grants = list_space_capability_grants(&mut connection, &session, Capability::View)
+            .await
+            .expect("scoped list should authorize its own membership");
+
+        assert_eq!(grants.len(), 1);
+        assert_eq!(grants[0].space_id(), first_space);
+        assert_eq!(grants[0].membership_id(), first_membership);
     }
 
     #[sqlx::test(migrations = "./migrations")]
