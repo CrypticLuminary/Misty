@@ -28,7 +28,7 @@ impl JobEnvelope {
 }
 
 pub async fn enqueue(pool: &PgPool, job: &JobEnvelope) -> Result<(), sqlx::Error> {
-    let payload = serde_json::to_value(job).map_err(|error| sqlx::Error::Encode(Box::new(error)))?;
+    let payload =\n        serde_json::to_value(job).map_err(|error| sqlx::Error::Encode(Box::new(error)))?;
 
     sqlx::query(
         r#"
