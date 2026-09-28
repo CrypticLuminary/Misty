@@ -136,7 +136,6 @@ async fn create_space_with_ids(
     })
 }
 
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SpaceSummary {
     space_id: Uuid,
