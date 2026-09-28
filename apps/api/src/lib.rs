@@ -1,6 +1,7 @@
 pub mod access_use_cases;
 pub mod authorization;
 pub mod config;
+pub mod http_api;
 pub mod invitations;
 pub mod jobs;
 pub mod sessions;
