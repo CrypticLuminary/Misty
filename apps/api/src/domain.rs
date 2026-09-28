@@ -85,7 +85,6 @@ impl RolePreset {
     }
 }
 
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SessionValidity {
     Valid,
@@ -344,7 +343,10 @@ mod database_tests {
         .execute(&pool)
         .await;
 
-        assert!(result.is_err(), "session membership must be scoped to its Space");
+        assert!(
+            result.is_err(),
+            "session membership must be scoped to its Space"
+        );
     }
 
     #[sqlx::test(migrations = "./migrations")]
@@ -386,5 +388,4 @@ mod database_tests {
             }
         }
     }
-
 }
