@@ -147,19 +147,20 @@ mod tests {
     }
 }
 
-
 #[cfg(test)]
 mod database_tests {
     use sqlx::PgPool;
     use uuid::Uuid;
 
     async fn create_space(pool: &PgPool, id: Uuid, creator: Uuid) {
-        sqlx::query("INSERT INTO spaces (id, name, created_by_identity_id) VALUES ($1, 'Test Space', $2)")
-            .bind(id)
-            .bind(creator)
-            .execute(pool)
-            .await
-            .expect("space should be created");
+        sqlx::query(
+            "INSERT INTO spaces (id, name, created_by_identity_id) VALUES ($1, 'Test Space', $2)",
+        )
+        .bind(id)
+        .bind(creator)
+        .execute(pool)
+        .await
+        .expect("space should be created");
     }
 
     async fn create_membership(pool: &PgPool, id: Uuid, space_id: Uuid, identity_id: Uuid) {
@@ -197,7 +198,10 @@ mod database_tests {
         .execute(&pool)
         .await;
 
-        assert!(result.is_err(), "cross-Space invitation creator must be rejected");
+        assert!(
+            result.is_err(),
+            "cross-Space invitation creator must be rejected"
+        );
     }
 
     #[sqlx::test(migrations = "./migrations")]
@@ -230,7 +234,10 @@ mod database_tests {
         .execute(&pool)
         .await;
 
-        assert!(result.is_err(), "archived state without timestamp must be rejected");
+        assert!(
+            result.is_err(),
+            "archived state without timestamp must be rejected"
+        );
     }
 
     #[sqlx::test(migrations = "./migrations")]
@@ -271,7 +278,10 @@ mod database_tests {
             if attempt == 0 {
                 assert!(result.is_ok());
             } else {
-                assert!(result.is_err(), "reused invitation verifier must be rejected");
+                assert!(
+                    result.is_err(),
+                    "reused invitation verifier must be rejected"
+                );
             }
         }
     }
