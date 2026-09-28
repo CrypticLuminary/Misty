@@ -358,12 +358,11 @@ mod tests {
 
         assert!(matches!(result, Err(CreateSpaceError::Storage(_))));
 
-        let space_count =
-            sqlx::query_scalar::<_, i64>("SELECT count(*) FROM spaces WHERE id = $1")
-                .bind(attempted_space)
-                .fetch_one(&pool)
-                .await
-                .unwrap();
+        let space_count = sqlx::query_scalar::<_, i64>("SELECT count(*) FROM spaces WHERE id = $1")
+            .bind(attempted_space)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
         let membership_count =
             sqlx::query_scalar::<_, i64>("SELECT count(*) FROM memberships WHERE id = $1")
                 .bind(attempted_membership)
