@@ -24,9 +24,9 @@ Session authorization is server-recognized: the browser holds only a high-entrop
 
 Owner sessions are identity-scoped. Guest sessions are additionally bound to exactly one Space membership, so a guest credential cannot become ambient cross-Space authority.
 
-For the intended HTTPS web topology, the browser credential is an `HttpOnly; Secure; SameSite=Lax` cookie with a narrow Path. Mutating browser requests additionally require same-origin validation and a CSRF token bound to the server-recognized session. CORS is not an authorization mechanism. Local development may relax `Secure` only on loopback through explicit development configuration.
+For the intended HTTPS web topology, the browser credential is a host-only `__Host-` cookie with `HttpOnly; Secure; SameSite=Lax; Path=/` and no `Domain` attribute. This prevents sibling subdomains from setting the production session cookie. Mutating browser requests additionally require same-origin validation and a CSRF token bound to the server-recognized session. CORS is not an authorization mechanism. Local development may relax `Secure` only on loopback through explicit development configuration.
 
-Logout/revocation sets server-side revocation state; expiry is checked server-side on every authenticated use. Rotating a session creates a new verifier and invalidates the old credential. Raw session secrets, CSRF secrets and invitation secrets must never enter logs, analytics or error payloads.
+Logout/revocation sets server-side revocation state; expiry is checked server-side on every authenticated use. Scoped sessions also require their bound membership to remain active and to belong to the same identity; removing or leaving a Space therefore invalidates scoped authority immediately. Rotating a session creates a new verifier and invalidates the old credential. Raw session secrets, CSRF secrets and invitation secrets must never enter logs, analytics or error payloads.
 
 ## Privacy-sensitive metadata
 Generated previews should omit unnecessary EXIF. GPS is hidden by default in product surfaces. Face embeddings are scoped to a Space by default; do not silently build a permanent global identity graph.
