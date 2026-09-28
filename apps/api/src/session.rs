@@ -1,5 +1,73 @@
+use std::time::Duration;
+
+use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+use rand::{rngs::OsRng, RngCore};
+use sha2::{Digest, Sha256};
 use sqlx::PgPool;
 use uuid::Uuid;
+
+const SESSION_SECRET_BYTES: usize = 32;
+
+pub struct IssuedSession {
+    session_id: Uuid,
+    secret: SessionSecret,
+}
+
+impl IssuedSession {
+    pub const fn session_id(&self) -> Uuid {
+        self.session_id
+    }
+
+    pub fn into_parts(self) -> (Uuid, String) {
+        (self.session_id, self.secret.into_string())
+    }
+}
+
+pub enum SessionScope {
+    Identity,
+    SpaceMembership {
+        space_id: Uuid,
+        membership_id: Uuid,
+    },
+}
+
+struct SessionSecret(String);
+
+impl SessionSecret {
+    fn generate() -> Result<Self, rand::Error> {
+        let mut bytes = [0_u8; SESSION_SECRET_BYTES];
+        OsRng.try_fill_bytes(&mut bytes)?;
+        Ok(Self(URL_SAFE_NO_PAD.encode(bytes)))
+    }
+
+    fn into_string(self) -> String {
+        self.0
+    }
+}
+
+struct SessionVerifier([u8; 32]);
+
+impl SessionVerifier {
+    fn from_raw_secret(raw_secret: &str) -> Option<Self> {
+        let decoded = URL_SAFE_NO_PAD.decode(raw_secret.as_bytes()).ok()?;
+        if decoded.len() != SESSION_SECRET_BYTES {
+            return None;
+        }
+
+        let digest = Sha256::digest(decoded);
+        let mut verifier = [0_u8; 32];
+        verifier.copy_from_slice(&digest);
+        Some(Self(verifier))
+    }
+
+    fn from_secret(secret: &SessionSecret) -> Self {
+        Self::from_raw_secret(&secret.0).expect("generated session secret must be valid")
+    }
+
+    const fn as_bytes(&self) -> &[u8; 32] {
+        &self.0
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AuthenticatedSession {
@@ -10,15 +78,81 @@ pub struct AuthenticatedSession {
 }
 
 #[derive(Debug)]
+pub enum SessionIssuanceError {
+    InvalidTtl,
+    InvalidScope,
+    Entropy(rand::Error),
+    Storage(sqlx::Error),
+}
+
+#[derive(Debug)]
 pub enum SessionResolutionError {
     InvalidCredential,
     Storage(sqlx::Error),
 }
 
+pub async fn issue_session(
+    pool: &PgPool,
+    identity_id: Uuid,
+    scope: SessionScope,
+    ttl: Duration,
+) -> Result<IssuedSession, SessionIssuanceError> {
+    let ttl_seconds = ttl.as_secs_f64();
+    if ttl_seconds <= 0.0 {
+        return Err(SessionIssuanceError::InvalidTtl);
+    }
+
+    let secret = SessionSecret::generate().map_err(SessionIssuanceError::Entropy)?;
+    let verifier = SessionVerifier::from_secret(&secret);
+    let session_id = Uuid::new_v4();
+
+    let (space_id, membership_id) = match scope {
+        SessionScope::Identity => (None, None),
+        SessionScope::SpaceMembership {
+            space_id,
+            membership_id,
+        } => (Some(space_id), Some(membership_id)),
+    };
+
+    let inserted = sqlx::query_scalar::<_, Uuid>(
+        "INSERT INTO sessions
+         (id, identity_id, secret_hash, space_id, membership_id, expires_at)
+         SELECT $1, $2, $3, $4, $5, now() + make_interval(secs => $6)
+         WHERE $4::uuid IS NULL
+            OR EXISTS (
+                SELECT 1
+                FROM memberships
+                WHERE space_id = $4
+                  AND id = $5
+                  AND identity_id = $2
+                  AND state = 'active'
+            )
+         RETURNING id",
+    )
+    .bind(session_id)
+    .bind(identity_id)
+    .bind(verifier.as_bytes().as_slice())
+    .bind(space_id)
+    .bind(membership_id)
+    .bind(ttl_seconds)
+    .fetch_optional(pool)
+    .await
+    .map_err(SessionIssuanceError::Storage)?;
+
+    if inserted.is_none() {
+        return Err(SessionIssuanceError::InvalidScope);
+    }
+
+    Ok(IssuedSession { session_id, secret })
+}
+
 pub async fn resolve_session(
     pool: &PgPool,
-    secret_hash: &[u8],
+    raw_secret: &str,
 ) -> Result<AuthenticatedSession, SessionResolutionError> {
+    let verifier = SessionVerifier::from_raw_secret(raw_secret)
+        .ok_or(SessionResolutionError::InvalidCredential)?;
+
     let row = sqlx::query_as::<_, (Uuid, Uuid, Option<Uuid>, Option<Uuid>)>(
         "SELECT s.id, s.identity_id, s.space_id, s.membership_id
          FROM sessions s
@@ -34,7 +168,7 @@ pub async fn resolve_session(
                OR m.state = 'active'
            )",
     )
-    .bind(secret_hash)
+    .bind(verifier.as_bytes().as_slice())
     .fetch_optional(pool)
     .await
     .map_err(SessionResolutionError::Storage)?;
@@ -70,55 +204,89 @@ pub async fn revoke_session(
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashSet;
+
     use super::*;
 
     async fn create_identity(pool: &PgPool, identity: Uuid) {
-        sqlx::query("INSERT INTO identities (id, kind) VALUES ($1, 'owner')")
+        sqlx::query("INSERT INTO identities (id) VALUES ($1)")
             .bind(identity)
             .execute(pool)
             .await
             .expect("identity should be created");
     }
 
-    async fn create_session(pool: &PgPool, identity: Uuid, hash: Vec<u8>) -> Uuid {
-        let id = Uuid::new_v4();
-        sqlx::query(
-            "INSERT INTO sessions (id, identity_id, secret_hash, expires_at)
-             VALUES ($1, $2, $3, now() + interval '1 hour')",
-        )
-        .bind(id)
-        .bind(identity)
-        .bind(hash)
-        .execute(pool)
-        .await
-        .expect("session should be created");
-        id
+    #[test]
+    fn generated_credentials_are_unique_url_safe_256_bit_secrets() {
+        let mut seen = HashSet::new();
+
+        for _ in 0..64 {
+            let secret = SessionSecret::generate().expect("OS entropy should be available");
+            let decoded = URL_SAFE_NO_PAD
+                .decode(secret.0.as_bytes())
+                .expect("generated credential should be base64url");
+            assert_eq!(decoded.len(), SESSION_SECRET_BYTES);
+            assert!(seen.insert(secret.0));
+        }
+    }
+
+    #[test]
+    fn verifier_is_deterministic_but_not_the_raw_credential() {
+        let secret = SessionSecret::generate().expect("OS entropy should be available");
+        let first = SessionVerifier::from_secret(&secret);
+        let second = SessionVerifier::from_raw_secret(&secret.0).unwrap();
+
+        assert_eq!(first.as_bytes(), second.as_bytes());
+        assert_ne!(first.as_bytes().as_slice(), secret.0.as_bytes());
     }
 
     #[sqlx::test(migrations = "./migrations")]
-    async fn unknown_credential_is_denied(pool: PgPool) {
-        let result = resolve_session(&pool, &[9_u8; 32]).await;
+    async fn malformed_or_unknown_credential_is_denied(pool: PgPool) {
         assert!(matches!(
-            result,
+            resolve_session(&pool, "not-a-session-secret").await,
+            Err(SessionResolutionError::InvalidCredential)
+        ));
+
+        let unknown = SessionSecret::generate().unwrap().into_string();
+        assert!(matches!(
+            resolve_session(&pool, &unknown).await,
             Err(SessionResolutionError::InvalidCredential)
         ));
     }
 
     #[sqlx::test(migrations = "./migrations")]
-    async fn valid_server_session_resolves_then_revocation_denies(pool: PgPool) {
+    async fn issued_session_stores_only_verifier_and_revocation_denies(pool: PgPool) {
         let identity = Uuid::new_v4();
         create_identity(&pool, identity).await;
-        let hash = vec![7_u8; 32];
-        let session_id = create_session(&pool, identity, hash.clone()).await;
 
-        let resolved = resolve_session(&pool, &hash)
+        let issued = issue_session(
+            &pool,
+            identity,
+            SessionScope::Identity,
+            Duration::from_secs(3600),
+        )
+        .await
+        .expect("session should issue");
+        let (session_id, raw_secret) = issued.into_parts();
+
+        let stored_verifier =
+            sqlx::query_scalar::<_, Vec<u8>>("SELECT secret_hash FROM sessions WHERE id = $1")
+                .bind(session_id)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+
+        assert_eq!(stored_verifier.len(), 32);
+        assert_ne!(stored_verifier, raw_secret.as_bytes());
+
+        let resolved = resolve_session(&pool, &raw_secret)
             .await
             .expect("valid session should resolve");
         assert_eq!(resolved.identity_id, identity);
 
         assert!(revoke_session(&pool, session_id, identity).await.unwrap());
         assert!(matches!(
-            resolve_session(&pool, &hash).await,
+            resolve_session(&pool, &raw_secret).await,
             Err(SessionResolutionError::InvalidCredential)
         ));
     }
@@ -127,24 +295,27 @@ mod tests {
     async fn expired_session_is_denied(pool: PgPool) {
         let identity = Uuid::new_v4();
         create_identity(&pool, identity).await;
-        let hash = vec![8_u8; 32];
-        let session_id = Uuid::new_v4();
+        let secret = SessionSecret::generate().unwrap();
+        let verifier = SessionVerifier::from_secret(&secret);
+        let raw_secret = secret.into_string();
+
         sqlx::query(
             "INSERT INTO sessions (id, identity_id, secret_hash, created_at, expires_at)
              VALUES ($1, $2, $3, now() - interval '2 hours', now() - interval '1 hour')",
         )
-        .bind(session_id)
+        .bind(Uuid::new_v4())
         .bind(identity)
-        .bind(hash.clone())
+        .bind(verifier.as_bytes().as_slice())
         .execute(&pool)
         .await
         .expect("historically valid expired session should be created");
 
         assert!(matches!(
-            resolve_session(&pool, &hash).await,
+            resolve_session(&pool, &raw_secret).await,
             Err(SessionResolutionError::InvalidCredential)
         ));
     }
+
     #[sqlx::test(migrations = "./migrations")]
     async fn scoped_session_identity_must_match_membership_identity(pool: PgPool) {
         let first_identity = Uuid::new_v4();
@@ -174,6 +345,8 @@ mod tests {
         .await
         .unwrap();
 
+        let secret = SessionSecret::generate().unwrap();
+        let verifier = SessionVerifier::from_secret(&secret);
         let result = sqlx::query(
             "INSERT INTO sessions
              (id, identity_id, secret_hash, space_id, membership_id, expires_at)
@@ -181,7 +354,7 @@ mod tests {
         )
         .bind(Uuid::new_v4())
         .bind(second_identity)
-        .bind(vec![10_u8; 32])
+        .bind(verifier.as_bytes().as_slice())
         .bind(space)
         .bind(membership)
         .execute(&pool)
@@ -194,7 +367,9 @@ mod tests {
     }
 
     #[sqlx::test(migrations = "./migrations")]
-    async fn removed_membership_invalidates_scoped_session(pool: PgPool) {
+    async fn scoped_issuance_requires_active_membership_and_removal_invalidates_session(
+        pool: PgPool,
+    ) {
         let identity = Uuid::new_v4();
         create_identity(&pool, identity).await;
         let space = Uuid::new_v4();
@@ -219,22 +394,20 @@ mod tests {
         .await
         .unwrap();
 
-        let hash = vec![11_u8; 32];
-        sqlx::query(
-            "INSERT INTO sessions
-             (id, identity_id, secret_hash, space_id, membership_id, expires_at)
-             VALUES ($1, $2, $3, $4, $5, now() + interval '1 hour')",
+        let issued = issue_session(
+            &pool,
+            identity,
+            SessionScope::SpaceMembership {
+                space_id: space,
+                membership_id: membership,
+            },
+            Duration::from_secs(3600),
         )
-        .bind(Uuid::new_v4())
-        .bind(identity)
-        .bind(hash.clone())
-        .bind(space)
-        .bind(membership)
-        .execute(&pool)
         .await
-        .unwrap();
+        .expect("active membership should receive scoped session");
+        let (_, raw_secret) = issued.into_parts();
 
-        assert!(resolve_session(&pool, &hash).await.is_ok());
+        assert!(resolve_session(&pool, &raw_secret).await.is_ok());
 
         sqlx::query("UPDATE memberships SET state = 'removed', ended_at = now() WHERE id = $1")
             .bind(membership)
@@ -243,8 +416,39 @@ mod tests {
             .unwrap();
 
         assert!(matches!(
-            resolve_session(&pool, &hash).await,
+            resolve_session(&pool, &raw_secret).await,
             Err(SessionResolutionError::InvalidCredential)
+        ));
+
+        assert!(matches!(
+            issue_session(
+                &pool,
+                identity,
+                SessionScope::SpaceMembership {
+                    space_id: space,
+                    membership_id: membership,
+                },
+                Duration::from_secs(3600),
+            )
+            .await,
+            Err(SessionIssuanceError::InvalidScope)
+        ));
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn zero_ttl_is_rejected_before_storage(pool: PgPool) {
+        let identity = Uuid::new_v4();
+        create_identity(&pool, identity).await;
+
+        assert!(matches!(
+            issue_session(
+                &pool,
+                identity,
+                SessionScope::Identity,
+                Duration::ZERO,
+            )
+            .await,
+            Err(SessionIssuanceError::InvalidTtl)
         ));
     }
 }
