@@ -1,16 +1,5 @@
-#[cfg(test)]
-mod access_integration_tests;
-mod authorization;
-mod config;
-mod invitations;
-mod jobs;
-mod sessions;
-mod space_authorization;
-mod space_use_cases;
-mod spaces;
-
 use axum::{Json, Router, extract::State, http::StatusCode, routing::get};
-use config::Config;
+use misty_api::config::Config;
 use serde::Serialize;
 use sqlx::{PgPool, postgres::PgPoolOptions};
 use tower_http::{
