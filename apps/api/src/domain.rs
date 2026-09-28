@@ -177,6 +177,21 @@ mod database_tests {
     use sqlx::PgPool;
     use uuid::Uuid;
 
+    fn assert_pg_error_code<T>(result: Result<T, sqlx::Error>, expected_code: &str, message: &str) {
+        let error = match result {
+            Ok(_) => panic!("{message}"),
+            Err(error) => error,
+        };
+        let database_error = error
+            .as_database_error()
+            .expect("expected PostgreSQL database error");
+        assert_eq!(
+            database_error.code().as_deref(),
+            Some(expected_code),
+            "{message}: unexpected PostgreSQL error: {database_error}"
+        );
+    }
+
     async fn create_space(pool: &PgPool, id: Uuid, creator: Uuid) {
         sqlx::query(
             "INSERT INTO identities (id, kind) VALUES ($1, 'owner') ON CONFLICT (id) DO NOTHING",
@@ -239,9 +254,10 @@ mod database_tests {
         .execute(&pool)
         .await;
 
-        assert!(
-            result.is_err(),
-            "cross-Space invitation creator must be rejected"
+        assert_pg_error_code(
+            result,
+            "23503",
+            "cross-Space invitation creator must be rejected by a foreign key",
         );
     }
 
@@ -251,33 +267,52 @@ mod database_tests {
         create_space(&pool, space, Uuid::new_v4()).await;
         create_membership(&pool, Uuid::new_v4(), space, Uuid::new_v4()).await;
 
+        let second_identity = Uuid::new_v4();
+        sqlx::query("INSERT INTO identities (id, kind) VALUES ($1, 'owner')")
+            .bind(second_identity)
+            .execute(&pool)
+            .await
+            .expect("second owner identity should exist");
+
         let duplicate = sqlx::query(
             "INSERT INTO memberships (id, space_id, identity_id, role)
              VALUES ($1, $2, $3, 'owner')",
         )
         .bind(Uuid::new_v4())
         .bind(space)
-        .bind(Uuid::new_v4())
+        .bind(second_identity)
         .execute(&pool)
         .await;
 
-        assert!(duplicate.is_err(), "a Space cannot have two active owners");
+        assert_pg_error_code(
+            duplicate,
+            "23505",
+            "a Space cannot have two active owners",
+        );
     }
 
     #[sqlx::test(migrations = "./migrations")]
     async fn archived_space_requires_archive_timestamp(pool: PgPool) {
+        let identity = Uuid::new_v4();
+        sqlx::query("INSERT INTO identities (id, kind) VALUES ($1, 'owner')")
+            .bind(identity)
+            .execute(&pool)
+            .await
+            .expect("creator identity should exist");
+
         let result = sqlx::query(
             "INSERT INTO spaces (id, name, state, created_by_identity_id)
              VALUES ($1, 'Invalid Archive', 'archived', $2)",
         )
         .bind(Uuid::new_v4())
-        .bind(Uuid::new_v4())
+        .bind(identity)
         .execute(&pool)
         .await;
 
-        assert!(
-            result.is_err(),
-            "archived state without timestamp must be rejected"
+        assert_pg_error_code(
+            result,
+            "23514",
+            "archived state without timestamp must be rejected by a check constraint",
         );
     }
 
@@ -300,7 +335,11 @@ mod database_tests {
         .bind(vec![1_u8; 8])
         .execute(&pool)
         .await;
-        assert!(weak.is_err(), "short invitation verifier must be rejected");
+        assert_pg_error_code(
+            weak,
+            "23514",
+            "short invitation verifier must be rejected by a check constraint",
+        );
 
         let hash = vec![9_u8; 32];
         for attempt in 0..2 {
@@ -319,9 +358,10 @@ mod database_tests {
             if attempt == 0 {
                 assert!(result.is_ok());
             } else {
-                assert!(
-                    result.is_err(),
-                    "reused invitation verifier must be rejected"
+                assert_pg_error_code(
+                    result,
+                    "23505",
+                    "reused invitation verifier must be rejected by uniqueness",
                 );
             }
         }
@@ -359,9 +399,10 @@ mod database_tests {
         .execute(&pool)
         .await;
 
-        assert!(
-            result.is_err(),
-            "session membership must be scoped to its Space"
+        assert_pg_error_code(
+            result,
+            "23503",
+            "session membership must be scoped to its Space",
         );
     }
 
@@ -383,7 +424,11 @@ mod database_tests {
         .bind(vec![4_u8; 32])
         .execute(&pool)
         .await;
-        assert!(expired.is_err(), "session expiry must be after creation");
+        assert_pg_error_code(
+            expired,
+            "23514",
+            "session expiry must be after creation",
+        );
 
         let verifier = vec![5_u8; 32];
         for attempt in 0..2 {
@@ -400,7 +445,11 @@ mod database_tests {
             if attempt == 0 {
                 assert!(result.is_ok());
             } else {
-                assert!(result.is_err(), "session verifier reuse must be rejected");
+                assert_pg_error_code(
+                    result,
+                    "23505",
+                    "session verifier reuse must be rejected by uniqueness",
+                );
             }
         }
     }
