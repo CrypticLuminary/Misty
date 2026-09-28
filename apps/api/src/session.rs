@@ -30,12 +30,14 @@ pub async fn resolve_session(
     .await
     .map_err(|_| SessionResolutionError::InvalidCredential)?;
 
-    row.map(|(session_id, identity_id, space_id, membership_id)| AuthenticatedSession {
-        session_id,
-        identity_id,
-        space_id,
-        membership_id,
-    })
+    row.map(
+        |(session_id, identity_id, space_id, membership_id)| AuthenticatedSession {
+            session_id,
+            identity_id,
+            space_id,
+            membership_id,
+        },
+    )
     .ok_or(SessionResolutionError::InvalidCredential)
 }
 
