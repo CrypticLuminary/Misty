@@ -828,6 +828,60 @@ mod tests {
     }
 
     #[sqlx::test(migrations = "./migrations")]
+    async fn failed_archive_audit_rolls_back_lifecycle_transition(pool: PgPool) {
+        let identity = create_identity(&pool).await;
+        let session = identity_session(&pool, identity).await;
+        let created = create_space(&pool, &session, "Atomic Archive", Uuid::new_v4())
+            .await
+            .unwrap();
+
+        let existing_audit_id = sqlx::query_scalar::<_, Uuid>(
+            "SELECT id
+             FROM audit_events
+             WHERE space_id = $1 AND event_type = 'space.created'",
+        )
+        .bind(created.space_id())
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+
+        let result = archive_space_with_audit_id(
+            &pool,
+            &session,
+            created.space_id(),
+            Uuid::new_v4(),
+            existing_audit_id,
+        )
+        .await;
+
+        assert!(matches!(result, Err(ArchiveSpaceError::Storage(_))));
+
+        let state = sqlx::query_as::<_, (String, bool)>(
+            "SELECT state::text, archived_at IS NULL
+             FROM spaces
+             WHERE id = $1",
+        )
+        .bind(created.space_id())
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+
+        assert_eq!(state.0, "active");
+        assert!(state.1, "rolled-back archive must not leave archived_at set");
+
+        let archived_events = sqlx::query_scalar::<_, i64>(
+            "SELECT count(*)
+             FROM audit_events
+             WHERE space_id = $1 AND event_type = 'space.archived'",
+        )
+        .bind(created.space_id())
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(archived_events, 0);
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
     async fn member_without_manage_space_cannot_archive(pool: PgPool) {
         let owner = create_identity(&pool).await;
         let member = create_identity(&pool).await;
