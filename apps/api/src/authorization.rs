@@ -1,4 +1,4 @@
-use sqlx::PgPool;
+use sqlx::{PgConnection, PgPool};
 use uuid::Uuid;
 
 use crate::{
@@ -25,7 +25,7 @@ pub enum AuthorizationError {
 }
 
 pub async fn authorize_space_capability(
-    pool: &PgPool,
+    connection: &mut PgConnection,
     session: &AuthenticatedSession,
     space_id: Uuid,
     capability: Capability,
@@ -46,12 +46,13 @@ pub async fn authorize_space_capability(
          WHERE space_id = $1
            AND identity_id = $2
            AND state = 'active'
-           AND ($3::uuid IS NULL OR id = $3)",
+           AND ($3::uuid IS NULL OR id = $3)
+         FOR SHARE",
     )
     .bind(space_id)
     .bind(session.identity_id())
     .bind(scoped_membership_id)
-    .fetch_optional(pool)
+    .fetch_optional(connection)
     .await
     .map_err(AuthorizationError::Storage)?;
 
@@ -80,6 +81,16 @@ mod tests {
 
     use super::*;
     use crate::session::{SessionScope, issue_session, resolve_session};
+
+    async fn authorize(
+        pool: &PgPool,
+        session: &AuthenticatedSession,
+        space_id: Uuid,
+        capability: Capability,
+    ) -> Result<AuthorizationGrant, AuthorizationError> {
+        let mut connection = pool.acquire().await.expect("connection should be available");
+        authorize_space_capability(&mut connection, session, space_id, capability).await
+    }
 
     async fn create_identity(pool: &PgPool) -> Uuid {
         let identity = Uuid::new_v4();
@@ -172,7 +183,7 @@ mod tests {
         let session = identity_session(&pool, identity).await;
 
         let grant =
-            authorize_space_capability(&pool, &session, space, Capability::ManageSpace)
+            authorize(&pool, &session, space, Capability::ManageSpace)
                 .await
                 .expect("owner should be authorized");
 
@@ -187,11 +198,11 @@ mod tests {
         let membership = create_membership(&pool, space, guest, "guest").await;
         let session = scoped_session(&pool, guest, space, membership).await;
 
-        assert!(authorize_space_capability(&pool, &session, space, Capability::View)
+        assert!(authorize(&pool, &session, space, Capability::View)
             .await
             .is_ok());
         assert!(matches!(
-            authorize_space_capability(&pool, &session, space, Capability::ManageSpace).await,
+            authorize(&pool, &session, space, Capability::ManageSpace).await,
             Err(AuthorizationError::Denied)
         ));
     }
@@ -208,11 +219,11 @@ mod tests {
 
         let session = scoped_session(&pool, identity, first_space, first_membership).await;
 
-        assert!(authorize_space_capability(&pool, &session, first_space, Capability::View)
+        assert!(authorize(&pool, &session, first_space, Capability::View)
             .await
             .is_ok());
         assert!(matches!(
-            authorize_space_capability(&pool, &session, second_space, Capability::View).await,
+            authorize(&pool, &session, second_space, Capability::View).await,
             Err(AuthorizationError::Denied)
         ));
     }
@@ -235,7 +246,7 @@ mod tests {
         .unwrap();
 
         assert!(matches!(
-            authorize_space_capability(&pool, &session, space, Capability::View).await,
+            authorize(&pool, &session, space, Capability::View).await,
             Err(AuthorizationError::Denied)
         ));
     }
@@ -247,7 +258,7 @@ mod tests {
         let session = identity_session(&pool, creator).await;
 
         assert!(matches!(
-            authorize_space_capability(&pool, &session, space, Capability::View).await,
+            authorize(&pool, &session, space, Capability::View).await,
             Err(AuthorizationError::Denied)
         ));
     }
@@ -262,7 +273,7 @@ mod tests {
         create_membership(&pool, guest_space, identity, "guest").await;
         let session = identity_session(&pool, identity).await;
 
-        assert!(authorize_space_capability(
+        assert!(authorize(
             &pool,
             &session,
             owned_space,
@@ -272,7 +283,7 @@ mod tests {
         .is_ok());
 
         assert!(matches!(
-            authorize_space_capability(
+            authorize(
                 &pool,
                 &session,
                 guest_space,
