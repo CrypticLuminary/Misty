@@ -146,3 +146,133 @@ mod tests {
         assert!(!RolePreset::Guest.allows(Capability::ManageMembers));
     }
 }
+
+
+#[cfg(test)]
+mod database_tests {
+    use sqlx::PgPool;
+    use uuid::Uuid;
+
+    async fn create_space(pool: &PgPool, id: Uuid, creator: Uuid) {
+        sqlx::query("INSERT INTO spaces (id, name, created_by_identity_id) VALUES ($1, 'Test Space', $2)")
+            .bind(id)
+            .bind(creator)
+            .execute(pool)
+            .await
+            .expect("space should be created");
+    }
+
+    async fn create_membership(pool: &PgPool, id: Uuid, space_id: Uuid, identity_id: Uuid) {
+        sqlx::query(
+            "INSERT INTO memberships (id, space_id, identity_id, role) VALUES ($1, $2, $3, 'owner')",
+        )
+        .bind(id)
+        .bind(space_id)
+        .bind(identity_id)
+        .execute(pool)
+        .await
+        .expect("membership should be created");
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn invitation_creator_must_belong_to_same_space(pool: PgPool) {
+        let identity = Uuid::new_v4();
+        let first_space = Uuid::new_v4();
+        let second_space = Uuid::new_v4();
+        let membership = Uuid::new_v4();
+
+        create_space(&pool, first_space, identity).await;
+        create_space(&pool, second_space, Uuid::new_v4()).await;
+        create_membership(&pool, membership, first_space, identity).await;
+
+        let result = sqlx::query(
+            "INSERT INTO invitations
+             (id, space_id, created_by_membership_id, secret_hash, expires_at)
+             VALUES ($1, $2, $3, $4, now() + interval '1 hour')",
+        )
+        .bind(Uuid::new_v4())
+        .bind(second_space)
+        .bind(membership)
+        .bind(vec![7_u8; 32])
+        .execute(&pool)
+        .await;
+
+        assert!(result.is_err(), "cross-Space invitation creator must be rejected");
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn only_one_active_owner_is_allowed_per_space(pool: PgPool) {
+        let space = Uuid::new_v4();
+        create_space(&pool, space, Uuid::new_v4()).await;
+        create_membership(&pool, Uuid::new_v4(), space, Uuid::new_v4()).await;
+
+        let duplicate = sqlx::query(
+            "INSERT INTO memberships (id, space_id, identity_id, role)
+             VALUES ($1, $2, $3, 'owner')",
+        )
+        .bind(Uuid::new_v4())
+        .bind(space)
+        .bind(Uuid::new_v4())
+        .execute(&pool)
+        .await;
+
+        assert!(duplicate.is_err(), "a Space cannot have two active owners");
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn archived_space_requires_archive_timestamp(pool: PgPool) {
+        let result = sqlx::query(
+            "INSERT INTO spaces (id, name, state, created_by_identity_id)
+             VALUES ($1, 'Invalid Archive', 'archived', $2)",
+        )
+        .bind(Uuid::new_v4())
+        .bind(Uuid::new_v4())
+        .execute(&pool)
+        .await;
+
+        assert!(result.is_err(), "archived state without timestamp must be rejected");
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn invitation_hash_must_be_unique_and_nontrivial(pool: PgPool) {
+        let identity = Uuid::new_v4();
+        let space = Uuid::new_v4();
+        let membership = Uuid::new_v4();
+        create_space(&pool, space, identity).await;
+        create_membership(&pool, membership, space, identity).await;
+
+        let weak = sqlx::query(
+            "INSERT INTO invitations
+             (id, space_id, created_by_membership_id, secret_hash, expires_at)
+             VALUES ($1, $2, $3, $4, now() + interval '1 hour')",
+        )
+        .bind(Uuid::new_v4())
+        .bind(space)
+        .bind(membership)
+        .bind(vec![1_u8; 8])
+        .execute(&pool)
+        .await;
+        assert!(weak.is_err(), "short invitation verifier must be rejected");
+
+        let hash = vec![9_u8; 32];
+        for attempt in 0..2 {
+            let result = sqlx::query(
+                "INSERT INTO invitations
+                 (id, space_id, created_by_membership_id, secret_hash, expires_at)
+                 VALUES ($1, $2, $3, $4, now() + interval '1 hour')",
+            )
+            .bind(Uuid::new_v4())
+            .bind(space)
+            .bind(membership)
+            .bind(hash.clone())
+            .execute(&pool)
+            .await;
+
+            if attempt == 0 {
+                assert!(result.is_ok());
+            } else {
+                assert!(result.is_err(), "reused invitation verifier must be rejected");
+            }
+        }
+    }
+}
