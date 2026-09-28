@@ -784,14 +784,13 @@ mod tests {
 
         assert_eq!(archived.state(), SpaceState::Archived);
 
-        let archived_at = sqlx::query_scalar::<_, Option<chrono::DateTime<chrono::Utc>>>(
-            "SELECT archived_at FROM spaces WHERE id = $1",
-        )
-        .bind(created.space_id())
-        .fetch_one(&pool)
-        .await
-        .unwrap();
-        assert!(archived_at.is_some());
+        let has_archived_at =
+            sqlx::query_scalar::<_, bool>("SELECT archived_at IS NOT NULL FROM spaces WHERE id = $1")
+                .bind(created.space_id())
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert!(has_archived_at);
 
         let audit = sqlx::query_as::<_, (String, Uuid)>(
             "SELECT event_type, correlation_id
