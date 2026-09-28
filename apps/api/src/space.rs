@@ -1,7 +1,13 @@
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use crate::session::AuthenticatedSession;
+use crate::{
+    authorization::{
+        AuthorizationError, authorize_space_capability, list_space_capability_grants,
+    },
+    domain::{Capability, SpaceState},
+    session::AuthenticatedSession,
+};
 
 const MAX_SPACE_NAME_CHARS: usize = 120;
 const SPACE_CREATED_EVENT: &str = "space.created";
@@ -130,6 +136,133 @@ async fn create_space_with_ids(
         owner_membership_id: ids.owner_membership_id,
         name,
     })
+}
+
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SpaceSummary {
+    space_id: Uuid,
+    name: String,
+    state: SpaceState,
+}
+
+impl SpaceSummary {
+    pub const fn space_id(&self) -> Uuid {
+        self.space_id
+    }
+
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub const fn state(&self) -> SpaceState {
+        self.state
+    }
+}
+
+#[derive(Debug)]
+pub enum SpaceAccessError {
+    Denied,
+    InvariantViolation,
+    Storage(sqlx::Error),
+}
+
+pub async fn read_space(
+    pool: &PgPool,
+    session: &AuthenticatedSession,
+    space_id: Uuid,
+) -> Result<SpaceSummary, SpaceAccessError> {
+    let mut transaction = pool.begin().await.map_err(SpaceAccessError::Storage)?;
+
+    authorize_space_capability(&mut transaction, session, space_id, Capability::View)
+        .await
+        .map_err(map_authorization_error)?;
+
+    let row = sqlx::query_as::<_, (Uuid, String, String)>(
+        "SELECT id, name, state::text
+         FROM spaces
+         WHERE id = $1
+           AND state <> 'deleted'",
+    )
+    .bind(space_id)
+    .fetch_optional(&mut *transaction)
+    .await
+    .map_err(SpaceAccessError::Storage)?
+    .ok_or(SpaceAccessError::Denied)?;
+
+    transaction
+        .commit()
+        .await
+        .map_err(SpaceAccessError::Storage)?;
+
+    summary_from_row(row)
+}
+
+pub async fn list_spaces(
+    pool: &PgPool,
+    session: &AuthenticatedSession,
+) -> Result<Vec<SpaceSummary>, SpaceAccessError> {
+    let mut transaction = pool.begin().await.map_err(SpaceAccessError::Storage)?;
+    let grants = list_space_capability_grants(&mut transaction, session, Capability::View)
+        .await
+        .map_err(map_authorization_error)?;
+
+    if grants.is_empty() {
+        transaction
+            .commit()
+            .await
+            .map_err(SpaceAccessError::Storage)?;
+        return Ok(Vec::new());
+    }
+
+    let space_ids: Vec<Uuid> = grants.into_iter().map(|grant| grant.space_id()).collect();
+    let rows = sqlx::query_as::<_, (Uuid, String, String)>(
+        "SELECT id, name, state::text
+         FROM spaces
+         WHERE id = ANY($1)
+           AND state <> 'deleted'
+         ORDER BY name ASC, id ASC",
+    )
+    .bind(&space_ids)
+    .fetch_all(&mut *transaction)
+    .await
+    .map_err(SpaceAccessError::Storage)?;
+
+    transaction
+        .commit()
+        .await
+        .map_err(SpaceAccessError::Storage)?;
+
+    rows.into_iter().map(summary_from_row).collect()
+}
+
+fn summary_from_row(row: (Uuid, String, String)) -> Result<SpaceSummary, SpaceAccessError> {
+    let state =
+        space_state_from_storage(&row.2).ok_or(SpaceAccessError::InvariantViolation)?;
+
+    Ok(SpaceSummary {
+        space_id: row.0,
+        name: row.1,
+        state,
+    })
+}
+
+fn space_state_from_storage(state: &str) -> Option<SpaceState> {
+    match state {
+        "active" => Some(SpaceState::Active),
+        "archived" => Some(SpaceState::Archived),
+        "deleting" => Some(SpaceState::Deleting),
+        "deleted" => Some(SpaceState::Deleted),
+        _ => None,
+    }
+}
+
+fn map_authorization_error(error: AuthorizationError) -> SpaceAccessError {
+    match error {
+        AuthorizationError::Denied => SpaceAccessError::Denied,
+        AuthorizationError::InvariantViolation => SpaceAccessError::InvariantViolation,
+        AuthorizationError::Storage(error) => SpaceAccessError::Storage(error),
+    }
 }
 
 fn normalize_space_name(raw_name: &str) -> Result<String, CreateSpaceError> {
