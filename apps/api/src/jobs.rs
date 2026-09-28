@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use sqlx::PgPool;
+use sqlx::{Postgres, Transaction};
 use uuid::Uuid;
 
 pub const JOB_SCHEMA_VERSION: u16 = 1;
@@ -27,9 +27,14 @@ impl JobEnvelope {
     }
 }
 
-pub async fn enqueue(pool: &PgPool, job: &JobEnvelope) -> Result<(), sqlx::Error> {
+pub async fn enqueue(
+    transaction: &mut Transaction<'_, Postgres>,
+    job: &JobEnvelope,
+) -> Result<(), sqlx::Error> {
     let payload =
         serde_json::to_value(job).map_err(|error| sqlx::Error::Encode(Box::new(error)))?;
+    let schema_version =
+        i16::try_from(job.schema_version).map_err(|error| sqlx::Error::Encode(Box::new(error)))?;
 
     sqlx::query(
         r#"
@@ -41,12 +46,12 @@ pub async fn enqueue(pool: &PgPool, job: &JobEnvelope) -> Result<(), sqlx::Error
         "#,
     )
     .bind(job.job_id)
-    .bind(i32::from(job.schema_version))
+    .bind(schema_version)
     .bind(&job.job_type)
     .bind(job.entity_id)
     .bind(job.correlation_id)
     .bind(payload)
-    .execute(pool)
+    .execute(&mut **transaction)
     .await?;
 
     Ok(())
@@ -76,5 +81,39 @@ mod tests {
         assert_eq!(value["schema_version"], JOB_SCHEMA_VERSION);
         assert_eq!(value["job_type"], "asset.verify");
         assert_eq!(value["attempt"], 0);
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn enqueue_persists_the_versioned_contract(
+        pool: sqlx::PgPool,
+    ) -> Result<(), sqlx::Error> {
+        let job = JobEnvelope::new("asset.verify", Uuid::new_v4(), Uuid::new_v4());
+
+        let mut transaction = pool.begin().await?;
+        enqueue(&mut transaction, &job).await?;
+        transaction.commit().await?;
+
+        let row: (i16, String, Uuid, Uuid, serde_json::Value) = sqlx::query_as(
+            r#"
+            SELECT schema_version, event_type, aggregate_id, correlation_id, payload
+            FROM outbox_events
+            WHERE id = $1
+            "#,
+        )
+        .bind(job.job_id)
+        .fetch_one(&pool)
+        .await?;
+
+        assert_eq!(
+            row.0,
+            i16::try_from(JOB_SCHEMA_VERSION).expect("schema version must fit SMALLINT")
+        );
+        assert_eq!(row.1, job.job_type);
+        assert_eq!(row.2, job.entity_id);
+        assert_eq!(row.3, job.correlation_id);
+        assert_eq!(row.4["job_id"], job.job_id.to_string());
+        assert_eq!(row.4["attempt"], 0);
+
+        Ok(())
     }
 }

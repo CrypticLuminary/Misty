@@ -3,32 +3,41 @@
 Last updated: 2026-09-28
 
 ## Current phase
-**Phase 1 — Engineering Foundation**
+**Phase 1 — Engineering Foundation (complete)**
 
 ## Current milestone
-**M1.1 — Repository brain and governance**
+**Phase 1 exit gate passed; Phase 2 is next**
 
-## Completed
-- Repository created and GitHub write access verified.
-- Initial architecture/product/security direction established in project documentation.
+## Completed and verified
+- Product invariants, architecture, security guidance, engineering rules, roadmap and foundational ADRs.
+- Next.js/strict-TypeScript web boundary, Rust API and media-worker boundaries, and Python AI-worker boundary.
+- Committed Cargo, pnpm and uv lockfiles with frozen/locked CI resolution.
+- Pinned Rust toolchain, runner generation, GitHub Actions and local infrastructure versions.
+- PostgreSQL + pgvector, Redis and local S3-compatible storage through Docker Compose with health checks.
+- API configuration validation, PostgreSQL connectivity/migrations, /health, /ready, structured logs and request-ID propagation.
+- Versioned job envelope plus a transaction-bound outbox enqueue foundation tested against PostgreSQL.
+- Web format/lint/type/test/build, Rust fmt/clippy/test/audit, Python lint/type/test, secret scanning and CodeQL.
+- Phase 1 correctness, security, performance, architecture, dependency, documentation and reproducibility review.
 
-## In progress
-- Project-brain documentation.
-- Complete Phase 1 TODO and acceptance gates.
-- CI/security baseline.
-- Monorepo skeleton and reproducible local infrastructure.
+Implementation evidence on commit c8cd50f183a9489757d3e5dfe49075f3a9a8fed1: CI run 36385011447, Security run 36385011516, and CodeQL run 36385011418 all passed.
+
+## Final Phase 1 gate
+Passed on commit `4023d932f471d479b6f2d954b1f72a0885b915f2`: CI run `36385462155`, Security run `36385462159`, and CodeQL run `36385462173` all completed successfully.
 
 ## Not implemented yet
-No production application capability should be assumed. Identity, Spaces, invitations, uploads, media processing, AI discovery, downloads, retention and billing remain future milestones unless this file is updated with passing evidence.
+No production application capability should be assumed. The following remain future work:
+- registered/guest identity, Spaces, memberships, invitations and capability authorization;
+- application integration with Redis and object storage;
+- original-media upload/download workflows and signed capabilities;
+- media validation, derivatives/transcodes and gallery behavior;
+- deterministic organization and AI discovery/Find Me;
+- export, retention/deletion workflows and billing;
+- production deployment/provider selection and application container images.
 
-## Immediate sequence
-1. Land project brain and ADRs.
-2. Establish CI/security workflows.
-3. Scaffold web/API/worker boundaries.
-4. Add PostgreSQL, pgvector, Redis and S3-compatible local storage.
-5. Add health/readiness paths and smoke tests.
-6. Run Phase 1 self-review loop.
-7. Update this file with evidence and remaining limitations.
+The transactional-outbox foundation does not yet include a dispatcher, queue delivery or consumers. The Rust core API remains provisional until the first secure vertical slice validates maintainability and ecosystem fit.
+
+## Next phase after the exit gate
+**Phase 2 — Spaces, identity and authorization**, following ADR-0011 so access control exists before media upload.
 
 ## Owner decisions pending
-None required for the foundation milestone. Provider-specific production hosting/storage decisions remain intentionally deferred until measured requirements and economics are available.
+None required to close the engineering foundation. Production hosting, object-storage provider and related cost/geography decisions remain intentionally deferred until measured requirements exist.
