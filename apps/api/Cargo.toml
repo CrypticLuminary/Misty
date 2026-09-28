@@ -7,7 +7,7 @@ publish = false
 [dependencies]
 axum = "0.8"
 serde = { version = "1", features = ["derive"] }
-sqlx = { version = "0.8", default-features = false, features = ["migrate", "postgres", "runtime-tokio-rustls", "uuid"] }
+sqlx = { version = "0.8", default-features = false, features = ["macros", "migrate", "postgres", "runtime-tokio-rustls", "uuid"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal"] }
 tower-http = { version = "0.6", features = ["request-id", "trace"] }
 tracing = "0.1"
