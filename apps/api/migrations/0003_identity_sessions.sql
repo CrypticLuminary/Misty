@@ -21,7 +21,7 @@ ALTER TABLE memberships
 CREATE TABLE sessions (
     id UUID PRIMARY KEY,
     identity_id UUID NOT NULL REFERENCES identities(id),
-    secret_hash BYTEA NOT NULL UNIQUE CHECK (octet_length(secret_hash) >= 32),
+    secret_hash BYTEA NOT NULL UNIQUE CHECK (octet_length(secret_hash) = 32),
     space_id UUID REFERENCES spaces(id),
     membership_id UUID,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
