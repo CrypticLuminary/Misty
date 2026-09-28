@@ -90,7 +90,7 @@ For every task ask:
 ### P2-T04 Archive + ACTIVE-only mutation rules
 - [ ] Archive via `can_manage_space`.
 - [ ] Forward-only transition.
-- [ ] Non-ACTIVE Spaces reject mutations unless explicitly documented.
+- [ ] Current production mutations reject invalid/non-ACTIVE transitions; introduce a reusable ACTIVE-write guard into production only when a real subsequent write use case consumes it.
 - [ ] Audit archive transition in same durable boundary.
 - [ ] Concurrent archive/update behavior tested.
 - [ ] Review A complete.
