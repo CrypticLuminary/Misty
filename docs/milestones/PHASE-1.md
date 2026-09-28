@@ -1,6 +1,6 @@
 # Phase 1 — Engineering Foundation
 
-Status: COMPLETION CANDIDATE
+Status: COMPLETE
 
 ## Objective
 Create a secure, reproducible foundation on which Misty's first vertical slice can be built without architectural drift.
@@ -80,4 +80,4 @@ See docs/milestones/PHASE-1-REVIEW.md for findings and evidence.
 
 **Phase 1 exit criterion:** another contributor/agent can clone Misty, understand the product/invariants, start the documented environment, run quality gates, observe health checks and safely begin Phase 2 without relying on chat history.
 
-The implementation candidate satisfies this criterion. The completion-state documentation commit must still pass CI, Security and CodeQL before the status changes from completion candidate to complete.
+The exit criterion is satisfied. Completion candidate commit `4023d932f471d479b6f2d954b1f72a0885b915f2` passed CI run `36385462155`, Security run `36385462159`, and CodeQL run `36385462173` on 2026-09-28.
