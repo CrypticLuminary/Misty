@@ -58,14 +58,20 @@ For every task ask:
 **Review B:** accepted. The boundary remains `AuthenticatedSession → active Membership → role preset → Capability`; no persisted ACL matrix, RLS policy layer or HTTP-specific authorization was introduced. This is the smallest model that supports the Phase 2 product flow and leaves later capability evolution centralized.
 
 ### P2-T02 Create Space atomically
-- [ ] Validate/normalize Space name.
-- [ ] Create Space + owner membership in one transaction.
-- [ ] Owner relationship is membership-based; `created_by_identity_id` is provenance only.
-- [ ] Prevent partial Space-without-owner creation.
-- [ ] Record audit evidence transactionally.
-- [ ] Retry/idempotency decision documented before HTTP exposure.
-- [ ] Review A complete.
-- [ ] Review B complete.
+- [x] Validate/normalize Space name.
+- [x] Create Space + owner membership in one transaction.
+- [x] Owner relationship is membership-based; `created_by_identity_id` is provenance only.
+- [x] Prevent partial Space-without-owner creation.
+- [x] Record audit evidence transactionally.
+- [x] Retry/idempotency decision documented before HTTP exposure.
+- [x] Review A complete.
+- [x] Review B complete.
+
+**Evidence:** implementation commit `b5d2962f314b9958f818aaf1929ef20419f57207` passed CI `36436562653`, Security `36436562849`, and CodeQL `36436562657`.
+
+**Review A:** passed. Space, active owner membership and `space.created` audit evidence commit atomically; tests force both owner-insert failure and audit-insert failure and prove no partial Space survives. Scoped guest sessions cannot bootstrap new Spaces, names are normalized/validated before persistence, and audit actor identity/membership is protected by a same-Space composite foreign key. Audit metadata is explicitly restricted to allowlisted non-secret data. HTTP retry safety is deliberately not claimed yet; the idempotency-key contract must exist before CreateSpace is exposed in M2.6.
+
+**Review B:** accepted. CreateSpace is a deliberate bootstrap exception to Space capability authorization because no Space membership exists before creation; requiring an identity-scoped authenticated session is the correct boundary. `created_by_identity_id` remains provenance while ownership is created as Membership state. The audit table was introduced because a real use case now requires it; no generic repository/service or extra infrastructure was added.
 
 ### P2-T03 Read + list Space
 - [ ] Protected Space summary through central authorization.
