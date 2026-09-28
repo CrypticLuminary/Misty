@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use sqlx::PgPool;
+use sqlx::{Postgres, Transaction};
 use uuid::Uuid;
 
 pub const JOB_SCHEMA_VERSION: u16 = 1;
@@ -27,7 +27,10 @@ impl JobEnvelope {
     }
 }
 
-pub async fn enqueue(pool: &PgPool, job: &JobEnvelope) -> Result<(), sqlx::Error> {
+pub async fn enqueue(
+    transaction: &mut Transaction<'_, Postgres>,
+    job: &JobEnvelope,
+) -> Result<(), sqlx::Error> {
     let payload =
         serde_json::to_value(job).map_err(|error| sqlx::Error::Encode(Box::new(error)))?;
     let schema_version =
@@ -48,7 +51,7 @@ pub async fn enqueue(pool: &PgPool, job: &JobEnvelope) -> Result<(), sqlx::Error
     .bind(job.entity_id)
     .bind(job.correlation_id)
     .bind(payload)
-    .execute(pool)
+    .execute(&mut **transaction)
     .await?;
 
     Ok(())
@@ -81,10 +84,12 @@ mod tests {
     }
 
     #[sqlx::test(migrations = "./migrations")]
-    async fn enqueue_persists_the_versioned_contract(pool: PgPool) -> Result<(), sqlx::Error> {
+    async fn enqueue_persists_the_versioned_contract(pool: sqlx::PgPool) -> Result<(), sqlx::Error> {
         let job = JobEnvelope::new("asset.verify", Uuid::new_v4(), Uuid::new_v4());
 
-        enqueue(&pool, &job).await?;
+        let mut transaction = pool.begin().await?;
+        enqueue(&mut transaction, &job).await?;
+        transaction.commit().await?;
 
         let row: (i16, String, Uuid, Uuid, serde_json::Value) = sqlx::query_as(
             r#"
