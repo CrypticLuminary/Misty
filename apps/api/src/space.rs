@@ -770,6 +770,154 @@ mod tests {
     }
 
     #[sqlx::test(migrations = "./migrations")]
+    async fn owner_can_archive_once_and_audit_transition(pool: PgPool) {
+        let identity = create_identity(&pool).await;
+        let session = identity_session(&pool, identity).await;
+        let correlation_id = Uuid::new_v4();
+        let created = create_space(&pool, &session, "Archive Me", Uuid::new_v4())
+            .await
+            .unwrap();
+
+        let archived = archive_space(&pool, &session, created.space_id(), correlation_id)
+            .await
+            .expect("owner should archive active Space");
+
+        assert_eq!(archived.state(), SpaceState::Archived);
+
+        let archived_at = sqlx::query_scalar::<_, Option<chrono::DateTime<chrono::Utc>>>(
+            "SELECT archived_at FROM spaces WHERE id = $1",
+        )
+        .bind(created.space_id())
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert!(archived_at.is_some());
+
+        let audit = sqlx::query_as::<_, (String, Uuid)>(
+            "SELECT event_type, correlation_id
+             FROM audit_events
+             WHERE space_id = $1 AND event_type = 'space.archived'",
+        )
+        .bind(created.space_id())
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(audit.0, SPACE_ARCHIVED_EVENT);
+        assert_eq!(audit.1, correlation_id);
+
+        assert!(matches!(
+            archive_space(&pool, &session, created.space_id(), Uuid::new_v4()).await,
+            Err(ArchiveSpaceError::NotActive)
+        ));
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn member_without_manage_space_cannot_archive(pool: PgPool) {
+        let owner = create_identity(&pool).await;
+        let member = create_identity(&pool).await;
+        let owner_session = identity_session(&pool, owner).await;
+        let created = create_space(&pool, &owner_session, "Protected Archive", Uuid::new_v4())
+            .await
+            .unwrap();
+
+        let membership = Uuid::new_v4();
+        sqlx::query(
+            "INSERT INTO memberships (id, space_id, identity_id, role)
+             VALUES ($1, $2, $3, 'member')",
+        )
+        .bind(membership)
+        .bind(created.space_id())
+        .bind(member)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        let member_session = identity_session(&pool, member).await;
+
+        assert!(matches!(
+            archive_space(
+                &pool,
+                &member_session,
+                created.space_id(),
+                Uuid::new_v4()
+            )
+            .await,
+            Err(ArchiveSpaceError::Denied)
+        ));
+
+        let state =
+            sqlx::query_scalar::<_, String>("SELECT state::text FROM spaces WHERE id = $1")
+                .bind(created.space_id())
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(state, "active");
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn archived_space_is_rejected_by_active_write_guard(pool: PgPool) {
+        let identity = create_identity(&pool).await;
+        let session = identity_session(&pool, identity).await;
+        let created = create_space(&pool, &session, "Read Only", Uuid::new_v4())
+            .await
+            .unwrap();
+        archive_space(&pool, &session, created.space_id(), Uuid::new_v4())
+            .await
+            .unwrap();
+
+        let mut transaction = pool.begin().await.unwrap();
+        assert!(matches!(
+            lock_active_space_for_write(&mut transaction, created.space_id()).await,
+            Err(SpaceAccessError::Denied)
+        ));
+        transaction.rollback().await.unwrap();
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn active_write_lock_serializes_competing_space_state_change(pool: PgPool) {
+        let identity = create_identity(&pool).await;
+        let session = identity_session(&pool, identity).await;
+        let created = create_space(&pool, &session, "Lock Me", Uuid::new_v4())
+            .await
+            .unwrap();
+
+        let mut first = pool.begin().await.unwrap();
+        authorize_space_capability(
+            &mut first,
+            &session,
+            created.space_id(),
+            Capability::ManageSpace,
+        )
+        .await
+        .unwrap();
+        lock_active_space_for_write(&mut first, created.space_id())
+            .await
+            .unwrap();
+
+        let mut competing = pool.begin().await.unwrap();
+        sqlx::query("SET LOCAL lock_timeout = '100ms'")
+            .execute(&mut *competing)
+            .await
+            .unwrap();
+
+        let update = sqlx::query(
+            "UPDATE spaces
+             SET state = 'archived', archived_at = now()
+             WHERE id = $1",
+        )
+        .bind(created.space_id())
+        .execute(&mut *competing)
+        .await;
+
+        assert!(
+            update.is_err(),
+            "Space state must not change while an active-write transaction relies on it"
+        );
+
+        first.rollback().await.unwrap();
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
     async fn failed_owner_membership_insert_rolls_back_space(pool: PgPool) {
         let identity = create_identity(&pool).await;
         let session = identity_session(&pool, identity).await;
