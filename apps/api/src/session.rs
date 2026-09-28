@@ -9,9 +9,10 @@ pub struct AuthenticatedSession {
     pub membership_id: Option<Uuid>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug)]
 pub enum SessionResolutionError {
     InvalidCredential,
+    Storage(sqlx::Error),
 }
 
 pub async fn resolve_session(
@@ -36,7 +37,7 @@ pub async fn resolve_session(
     .bind(secret_hash)
     .fetch_optional(pool)
     .await
-    .map_err(|_| SessionResolutionError::InvalidCredential)?;
+    .map_err(SessionResolutionError::Storage)?;
 
     row.map(
         |(session_id, identity_id, space_id, membership_id)| AuthenticatedSession {
@@ -97,7 +98,10 @@ mod tests {
     #[sqlx::test(migrations = "./migrations")]
     async fn unknown_credential_is_denied(pool: PgPool) {
         let result = resolve_session(&pool, &[9_u8; 32]).await;
-        assert_eq!(result, Err(SessionResolutionError::InvalidCredential));
+        assert!(matches!(
+            result,
+            Err(SessionResolutionError::InvalidCredential)
+        ));
     }
 
     #[sqlx::test(migrations = "./migrations")]
@@ -113,10 +117,10 @@ mod tests {
         assert_eq!(resolved.identity_id, identity);
 
         assert!(revoke_session(&pool, session_id, identity).await.unwrap());
-        assert_eq!(
+        assert!(matches!(
             resolve_session(&pool, &hash).await,
             Err(SessionResolutionError::InvalidCredential)
-        );
+        ));
     }
 
     #[sqlx::test(migrations = "./migrations")]
@@ -136,10 +140,10 @@ mod tests {
         .await
         .expect("historically valid expired session should be created");
 
-        assert_eq!(
+        assert!(matches!(
             resolve_session(&pool, &hash).await,
             Err(SessionResolutionError::InvalidCredential)
-        );
+        ));
     }
     #[sqlx::test(migrations = "./migrations")]
     async fn scoped_session_identity_must_match_membership_identity(pool: PgPool) {
@@ -238,9 +242,9 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(
+        assert!(matches!(
             resolve_session(&pool, &hash).await,
             Err(SessionResolutionError::InvalidCredential)
-        );
+        ));
     }
 }
