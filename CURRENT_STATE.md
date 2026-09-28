@@ -45,3 +45,11 @@ The transactional-outbox foundation does not yet include a dispatcher, queue del
 
 ## Owner decisions pending
 None required to close the engineering foundation. Production hosting, object-storage provider and related cost/geography decisions remain intentionally deferred until measured requirements exist.
+
+
+## Phase 2 execution loop
+Detailed task order and mandatory dual-review gates live in `docs/milestones/PHASE-2-EXECUTION.md`. GitHub issue #15 mirrors the high-level progress.
+
+Current task: **P2-T04 — Archive + ACTIVE-only mutation rules**.
+
+Every task must pass implementation/tests, exact-head CI/Security/CodeQL, Review A (security/bugs/vulnerabilities), and Review B (approach/system alignment) before it is marked complete. Findings reopen the task; they are not deferred merely to keep the roadmap moving.
