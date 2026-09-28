@@ -227,7 +227,7 @@ fn map_access_error(error: AccessError) -> (StatusCode, Json<ErrorBody>) {
                 code: "INVITE_UNAVAILABLE",
             }),
         ),
-        AccessError::Database(_) => internal(),
+        AccessError::Database => internal(),
     }
 }
 
