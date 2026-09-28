@@ -4,12 +4,12 @@ use uuid::Uuid;
 #[derive(Debug)]
 pub enum SpaceError {
     InvalidName,
-    Database(sqlx::Error),
+    Database,
 }
 
 impl From<sqlx::Error> for SpaceError {
-    fn from(value: sqlx::Error) -> Self {
-        Self::Database(value)
+    fn from(_: sqlx::Error) -> Self {
+        Self::Database
     }
 }
 
