@@ -28,3 +28,17 @@ A group can securely create/join a Space, upload many original media files, brow
 - Full photo editor
 - End-to-end encrypted server-side AI (this is a separate architecture with major tradeoffs)
 - Microservice platform for its own sake
+
+
+## Product assumptions to validate
+Architecture must not substitute for product evidence. Before AI becomes a major investment, validate the assumptions that materially change the design:
+
+- who usually creates the Space and who is responsible for it after the event;
+- realistic group size, asset count, video size and upload-network conditions;
+- whether participants expect accountless access, persistent accounts, or both;
+- what a "guest", "member" and "owner" mean as access policy rather than account status;
+- how long users expect a Space to remain active and what recovery/extension behavior they expect;
+- whether users primarily retrieve individual originals, selections, or large batch exports;
+- whether people/moment/location organization solves a repeated pain point strongly enough to justify its privacy and compute cost.
+
+Use prototypes and representative users/events to answer these before optimizing architecture around assumed scale or AI behavior.
