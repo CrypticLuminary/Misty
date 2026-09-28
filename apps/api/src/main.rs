@@ -1,6 +1,8 @@
 mod authorization;
 mod config;
+mod invitations;
 mod jobs;
+mod sessions;
 mod spaces;
 
 use axum::{Json, Router, extract::State, http::StatusCode, routing::get};
