@@ -69,13 +69,19 @@ struct ErrorBody {
 }
 
 pub fn router(state: ApiState) -> Router {
-    Router::new()
-        .route("/v1/dev/bootstrap-session", post(bootstrap_session_handler))
+    let router = Router::new()
         .route("/v1/spaces", post(create_space_handler))
         .route("/v1/spaces/{space_id}", get(get_space_handler))
         .route("/v1/spaces/{space_id}/invitations", post(create_invitation_handler))
-        .route("/v1/join", post(join_handler))
-        .with_state(state)
+        .route("/v1/join", post(join_handler));
+
+    let router = if std::env::var("MISTY_ENABLE_DEV_BOOTSTRAP").as_deref() == Ok("true") {
+        router.route("/v1/dev/bootstrap-session", post(bootstrap_session_handler))
+    } else {
+        router
+    };
+
+    router.with_state(state)
 }
 
 async fn bootstrap_session_handler(
