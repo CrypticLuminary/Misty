@@ -85,6 +85,24 @@ impl RolePreset {
     }
 }
 
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SessionValidity {
+    Valid,
+    Expired,
+    Revoked,
+}
+
+pub const fn session_validity(is_expired: bool, is_revoked: bool) -> SessionValidity {
+    if is_revoked {
+        SessionValidity::Revoked
+    } else if is_expired {
+        SessionValidity::Expired
+    } else {
+        SessionValidity::Valid
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -135,6 +153,14 @@ mod tests {
             MembershipState::Left.transition_to(MembershipState::Active),
             Err(DomainError::InvalidTransition)
         );
+    }
+
+    #[test]
+    fn session_revocation_takes_precedence_over_expiry() {
+        assert_eq!(session_validity(false, false), SessionValidity::Valid);
+        assert_eq!(session_validity(true, false), SessionValidity::Expired);
+        assert_eq!(session_validity(false, true), SessionValidity::Revoked);
+        assert_eq!(session_validity(true, true), SessionValidity::Revoked);
     }
 
     #[test]
@@ -285,4 +311,80 @@ mod database_tests {
             }
         }
     }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn guest_session_membership_must_belong_to_same_space(pool: PgPool) {
+        let first_identity = Uuid::new_v4();
+        let second_identity = Uuid::new_v4();
+        sqlx::query("INSERT INTO identities (id, kind) VALUES ($1, 'owner'), ($2, 'owner')")
+            .bind(first_identity)
+            .bind(second_identity)
+            .execute(&pool)
+            .await
+            .expect("identities should be created");
+
+        let first_space = Uuid::new_v4();
+        let second_space = Uuid::new_v4();
+        create_space(&pool, first_space, first_identity).await;
+        create_space(&pool, second_space, second_identity).await;
+
+        let membership = Uuid::new_v4();
+        create_membership(&pool, membership, first_space, first_identity).await;
+
+        let result = sqlx::query(
+            "INSERT INTO sessions
+             (id, identity_id, secret_hash, space_id, membership_id, expires_at)
+             VALUES ($1, $2, $3, $4, $5, now() + interval '1 hour')",
+        )
+        .bind(Uuid::new_v4())
+        .bind(first_identity)
+        .bind(vec![3_u8; 32])
+        .bind(second_space)
+        .bind(membership)
+        .execute(&pool)
+        .await;
+
+        assert!(result.is_err(), "session membership must be scoped to its Space");
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn session_verifier_is_unique_and_expiry_must_be_future(pool: PgPool) {
+        let identity = Uuid::new_v4();
+        sqlx::query("INSERT INTO identities (id, kind) VALUES ($1, 'owner')")
+            .bind(identity)
+            .execute(&pool)
+            .await
+            .expect("identity should be created");
+
+        let expired = sqlx::query(
+            "INSERT INTO sessions (id, identity_id, secret_hash, expires_at)
+             VALUES ($1, $2, $3, now() - interval '1 minute')",
+        )
+        .bind(Uuid::new_v4())
+        .bind(identity)
+        .bind(vec![4_u8; 32])
+        .execute(&pool)
+        .await;
+        assert!(expired.is_err(), "session expiry must be after creation");
+
+        let verifier = vec![5_u8; 32];
+        for attempt in 0..2 {
+            let result = sqlx::query(
+                "INSERT INTO sessions (id, identity_id, secret_hash, expires_at)
+                 VALUES ($1, $2, $3, now() + interval '1 hour')",
+            )
+            .bind(Uuid::new_v4())
+            .bind(identity)
+            .bind(verifier.clone())
+            .execute(&pool)
+            .await;
+
+            if attempt == 0 {
+                assert!(result.is_ok());
+            } else {
+                assert!(result.is_err(), "session verifier reuse must be rejected");
+            }
+        }
+    }
+
 }
