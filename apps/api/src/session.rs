@@ -19,11 +19,19 @@ pub async fn resolve_session(
     secret_hash: &[u8],
 ) -> Result<AuthenticatedSession, SessionResolutionError> {
     let row = sqlx::query_as::<_, (Uuid, Uuid, Option<Uuid>, Option<Uuid>)>(
-        "SELECT id, identity_id, space_id, membership_id
-         FROM sessions
-         WHERE secret_hash = $1
-           AND revoked_at IS NULL
-           AND expires_at > now()",
+        "SELECT s.id, s.identity_id, s.space_id, s.membership_id
+         FROM sessions s
+         LEFT JOIN memberships m
+           ON m.space_id = s.space_id
+          AND m.id = s.membership_id
+          AND m.identity_id = s.identity_id
+         WHERE s.secret_hash = $1
+           AND s.revoked_at IS NULL
+           AND s.expires_at > now()
+           AND (
+               s.membership_id IS NULL
+               OR m.state = 'active'
+           )",
     )
     .bind(secret_hash)
     .fetch_optional(pool)
@@ -133,4 +141,106 @@ mod tests {
             Err(SessionResolutionError::InvalidCredential)
         );
     }
+    #[sqlx::test(migrations = "./migrations")]
+    async fn scoped_session_identity_must_match_membership_identity(pool: PgPool) {
+        let first_identity = Uuid::new_v4();
+        let second_identity = Uuid::new_v4();
+        create_identity(&pool, first_identity).await;
+        create_identity(&pool, second_identity).await;
+
+        let space = Uuid::new_v4();
+        sqlx::query(
+            "INSERT INTO spaces (id, name, created_by_identity_id) VALUES ($1, 'Scoped', $2)",
+        )
+        .bind(space)
+        .bind(first_identity)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        let membership = Uuid::new_v4();
+        sqlx::query(
+            "INSERT INTO memberships (id, space_id, identity_id, role)
+             VALUES ($1, $2, $3, 'owner')",
+        )
+        .bind(membership)
+        .bind(space)
+        .bind(first_identity)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        let result = sqlx::query(
+            "INSERT INTO sessions
+             (id, identity_id, secret_hash, space_id, membership_id, expires_at)
+             VALUES ($1, $2, $3, $4, $5, now() + interval '1 hour')",
+        )
+        .bind(Uuid::new_v4())
+        .bind(second_identity)
+        .bind(vec![10_u8; 32])
+        .bind(space)
+        .bind(membership)
+        .execute(&pool)
+        .await;
+
+        assert!(result.is_err(), "session identity must own its scoped membership");
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn removed_membership_invalidates_scoped_session(pool: PgPool) {
+        let identity = Uuid::new_v4();
+        create_identity(&pool, identity).await;
+        let space = Uuid::new_v4();
+        sqlx::query(
+            "INSERT INTO spaces (id, name, created_by_identity_id) VALUES ($1, 'Scoped', $2)",
+        )
+        .bind(space)
+        .bind(identity)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        let membership = Uuid::new_v4();
+        sqlx::query(
+            "INSERT INTO memberships (id, space_id, identity_id, role)
+             VALUES ($1, $2, $3, 'guest')",
+        )
+        .bind(membership)
+        .bind(space)
+        .bind(identity)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        let hash = vec![11_u8; 32];
+        sqlx::query(
+            "INSERT INTO sessions
+             (id, identity_id, secret_hash, space_id, membership_id, expires_at)
+             VALUES ($1, $2, $3, $4, $5, now() + interval '1 hour')",
+        )
+        .bind(Uuid::new_v4())
+        .bind(identity)
+        .bind(hash.clone())
+        .bind(space)
+        .bind(membership)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        assert!(resolve_session(&pool, &hash).await.is_ok());
+
+        sqlx::query(
+            "UPDATE memberships SET state = 'removed', ended_at = now() WHERE id = $1",
+        )
+        .bind(membership)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        assert_eq!(
+            resolve_session(&pool, &hash).await,
+            Err(SessionResolutionError::InvalidCredential)
+        );
+    }
+
 }
