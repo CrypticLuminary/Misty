@@ -9,6 +9,7 @@ use crate::{
 
 const MAX_SPACE_NAME_CHARS: usize = 120;
 const SPACE_CREATED_EVENT: &str = "space.created";
+const SPACE_ARCHIVED_EVENT: &str = "space.archived";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CreatedSpace {
@@ -258,6 +259,122 @@ fn map_authorization_error(error: AuthorizationError) -> SpaceAccessError {
         AuthorizationError::Denied => SpaceAccessError::Denied,
         AuthorizationError::InvariantViolation => SpaceAccessError::InvariantViolation,
         AuthorizationError::Storage(error) => SpaceAccessError::Storage(error),
+    }
+}
+
+#[derive(Debug)]
+pub enum ArchiveSpaceError {
+    Denied,
+    NotActive,
+    InvariantViolation,
+    Storage(sqlx::Error),
+}
+
+pub async fn archive_space(
+    pool: &PgPool,
+    session: &AuthenticatedSession,
+    space_id: Uuid,
+    correlation_id: Uuid,
+) -> Result<SpaceSummary, ArchiveSpaceError> {
+    let mut transaction = pool.begin().await.map_err(ArchiveSpaceError::Storage)?;
+
+    let grant =
+        authorize_space_capability(&mut transaction, session, space_id, Capability::ManageSpace)
+            .await
+            .map_err(map_archive_authorization_error)?;
+
+    let current_state = lock_space_state(&mut transaction, space_id)
+        .await
+        .map_err(map_archive_space_access_error)?;
+
+    current_state
+        .transition_to(SpaceState::Archived)
+        .map_err(|_| ArchiveSpaceError::NotActive)?;
+
+    let row = sqlx::query_as::<_, (Uuid, String, String)>(
+        "UPDATE spaces
+         SET state = 'archived',
+             archived_at = now()
+         WHERE id = $1
+           AND state = 'active'
+         RETURNING id, name, state::text",
+    )
+    .bind(space_id)
+    .fetch_optional(&mut *transaction)
+    .await
+    .map_err(ArchiveSpaceError::Storage)?
+    .ok_or(ArchiveSpaceError::NotActive)?;
+
+    sqlx::query(
+        "INSERT INTO audit_events
+         (id, space_id, actor_identity_id, actor_membership_id, event_type, correlation_id)
+         VALUES ($1, $2, $3, $4, $5, $6)",
+    )
+    .bind(Uuid::new_v4())
+    .bind(space_id)
+    .bind(session.identity_id())
+    .bind(grant.membership_id())
+    .bind(SPACE_ARCHIVED_EVENT)
+    .bind(correlation_id)
+    .execute(&mut *transaction)
+    .await
+    .map_err(ArchiveSpaceError::Storage)?;
+
+    transaction
+        .commit()
+        .await
+        .map_err(ArchiveSpaceError::Storage)?;
+
+    summary_from_row(row).map_err(|error| match error {
+        SpaceAccessError::InvariantViolation => ArchiveSpaceError::InvariantViolation,
+        SpaceAccessError::Storage(error) => ArchiveSpaceError::Storage(error),
+        SpaceAccessError::Denied => ArchiveSpaceError::InvariantViolation,
+    })
+}
+
+pub(crate) async fn lock_active_space_for_write(
+    connection: &mut sqlx::PgConnection,
+    space_id: Uuid,
+) -> Result<(), SpaceAccessError> {
+    let state = lock_space_state(connection, space_id).await?;
+    if !state.accepts_writes() {
+        return Err(SpaceAccessError::Denied);
+    }
+    Ok(())
+}
+
+async fn lock_space_state(
+    connection: &mut sqlx::PgConnection,
+    space_id: Uuid,
+) -> Result<SpaceState, SpaceAccessError> {
+    let state = sqlx::query_scalar::<_, String>(
+        "SELECT state::text
+         FROM spaces
+         WHERE id = $1
+         FOR UPDATE",
+    )
+    .bind(space_id)
+    .fetch_optional(connection)
+    .await
+    .map_err(SpaceAccessError::Storage)?
+    .ok_or(SpaceAccessError::Denied)?;
+
+    space_state_from_storage(&state).ok_or(SpaceAccessError::InvariantViolation)
+}
+
+fn map_archive_authorization_error(error: AuthorizationError) -> ArchiveSpaceError {
+    match error {
+        AuthorizationError::Denied => ArchiveSpaceError::Denied,
+        AuthorizationError::InvariantViolation => ArchiveSpaceError::InvariantViolation,
+        AuthorizationError::Storage(error) => ArchiveSpaceError::Storage(error),
+    }
+}
+
+fn map_archive_space_access_error(error: SpaceAccessError) -> ArchiveSpaceError {
+    match error {
+        SpaceAccessError::Denied => ArchiveSpaceError::Denied,
+        SpaceAccessError::InvariantViolation => ArchiveSpaceError::InvariantViolation,
+        SpaceAccessError::Storage(error) => ArchiveSpaceError::Storage(error),
     }
 }
 
