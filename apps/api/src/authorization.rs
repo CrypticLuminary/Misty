@@ -80,36 +80,32 @@ pub async fn list_space_capability_grants(
     capability: Capability,
 ) -> Result<Vec<AuthorizationGrant>, AuthorizationError> {
     let rows = match (session.space_id(), session.membership_id()) {
-        (None, None) => {
-            sqlx::query_as::<_, (Uuid, Uuid, String)>(
-                "SELECT id, space_id, role::text
+        (None, None) => sqlx::query_as::<_, (Uuid, Uuid, String)>(
+            "SELECT id, space_id, role::text
                  FROM memberships
                  WHERE identity_id = $1
                    AND state = 'active'
                  FOR SHARE",
-            )
-            .bind(session.identity_id())
-            .fetch_all(&mut *connection)
-            .await
-            .map_err(AuthorizationError::Storage)?
-        }
-        (Some(space_id), Some(membership_id)) => {
-            sqlx::query_as::<_, (Uuid, Uuid, String)>(
-                "SELECT id, space_id, role::text
+        )
+        .bind(session.identity_id())
+        .fetch_all(&mut *connection)
+        .await
+        .map_err(AuthorizationError::Storage)?,
+        (Some(space_id), Some(membership_id)) => sqlx::query_as::<_, (Uuid, Uuid, String)>(
+            "SELECT id, space_id, role::text
                  FROM memberships
                  WHERE id = $1
                    AND space_id = $2
                    AND identity_id = $3
                    AND state = 'active'
                  FOR SHARE",
-            )
-            .bind(membership_id)
-            .bind(space_id)
-            .bind(session.identity_id())
-            .fetch_all(&mut *connection)
-            .await
-            .map_err(AuthorizationError::Storage)?
-        }
+        )
+        .bind(membership_id)
+        .bind(space_id)
+        .bind(session.identity_id())
+        .fetch_all(&mut *connection)
+        .await
+        .map_err(AuthorizationError::Storage)?,
         (Some(_), None) | (None, Some(_)) => return Err(AuthorizationError::Denied),
     };
 
