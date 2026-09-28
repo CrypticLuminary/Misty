@@ -12,12 +12,12 @@ docker compose up -d
 docker compose ps
 ```
 
-This starts the pinned PostgreSQL/pgvector, Redis and MinIO services. The example credentials are local-only and must not be reused in production.
+This starts the pinned PostgreSQL/pgvector, Redis and SeaweedFS S3-compatible object-storage services. The example credentials are local-only and must not be reused in production.
 
 All three services should report healthy before starting the API. To inspect failures:
 
 ```sh
-docker compose logs -f postgres redis minio
+docker compose logs -f postgres redis object-storage
 ```
 
 To stop without deleting local data:
