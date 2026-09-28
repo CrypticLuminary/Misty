@@ -6,7 +6,7 @@ Last updated: 2026-09-28
 **Phase 2 — Secure Space Access (active)**
 
 ## Current milestone
-**M2.1 — Domain model and invariants**
+**M2.2 — Identity and sessions**
 
 ## Completed and verified
 - Product invariants, architecture, security guidance, engineering rules, roadmap and foundational ADRs.
@@ -26,7 +26,7 @@ Passed on commit `4023d932f471d479b6f2d954b1f72a0885b915f2`: CI run `36385462155
 
 ## Not implemented yet
 No production application capability should be assumed. The following remain future work:
-- registered/guest identity, Spaces, memberships, invitations and capability authorization;
+- complete owner/guest session issuance, invitation joining, Space use cases and capability authorization;
 - application integration with Redis and object storage;
 - original-media upload/download workflows and signed capabilities;
 - media validation, derivatives/transcodes and gallery behavior;
@@ -37,7 +37,7 @@ No production application capability should be assumed. The following remain fut
 The transactional-outbox foundation does not yet include a dispatcher, queue delivery or consumers. The Rust core API remains provisional until the first secure vertical slice validates maintainability and ecosystem fit.
 
 ## Active Phase 2 milestone
-**M2.1 — Domain model and invariants.** Define authoritative Space, membership, invitation and capability rules before identity/session or transport implementation.
+**M2.2 — Identity and sessions.** Harden server-recognized owner/guest session semantics, scoped membership binding, credential issuance and CSRF/cookie behavior before protected browser mutations.
 
 ## Owner decisions pending
 None required to close the engineering foundation. Production hosting, object-storage provider and related cost/geography decisions remain intentionally deferred until measured requirements exist.
