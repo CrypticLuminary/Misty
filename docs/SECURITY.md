@@ -19,8 +19,10 @@ Buckets/containers holding originals are private. Downloads require server autho
 ## Uploads
 Do not trust extensions or client MIME. Validate file signatures/decodability, supported type, configured limits and authorization. New uploads may enter quarantine before acceptance. Client validation is UX only.
 
-## Sessions
-Session authorization is server-recognized: the browser holds only a high-entropy opaque session secret while PostgreSQL stores a non-recoverable verifier plus expiry/revocation state. A session ID, identity ID, membership ID or Space ID is never sufficient to authenticate.
+## Identity and sessions
+An identity is a neutral principal, not an authorization role. Whether that identity is an owner, member or guest is defined only by its Space membership. This avoids global role state leaking across Spaces.
+
+Session authorization is server-recognized: the browser holds only a 256-bit opaque random secret while PostgreSQL stores only its 32-byte SHA-256 verifier plus expiry/revocation state. The raw secret is generated from operating-system cryptographic randomness, encoded as unpadded Base64URL for transport, returned only through the issuance boundary and never persisted. A session ID, identity ID, membership ID, Space ID or stored verifier is never sufficient to authenticate.
 
 Owner sessions are identity-scoped. Guest sessions are additionally bound to exactly one Space membership, so a guest credential cannot become ambient cross-Space authority.
 
