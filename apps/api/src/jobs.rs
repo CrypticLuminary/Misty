@@ -84,7 +84,9 @@ mod tests {
     }
 
     #[sqlx::test(migrations = "./migrations")]
-    async fn enqueue_persists_the_versioned_contract(pool: sqlx::PgPool) -> Result<(), sqlx::Error> {
+    async fn enqueue_persists_the_versioned_contract(
+        pool: sqlx::PgPool,
+    ) -> Result<(), sqlx::Error> {
         let job = JobEnvelope::new("asset.verify", Uuid::new_v4(), Uuid::new_v4());
 
         let mut transaction = pool.begin().await?;
