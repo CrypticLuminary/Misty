@@ -52,9 +52,7 @@ impl SessionVerifier {
         }
 
         let decoded = URL_SAFE_NO_PAD.decode(raw_secret.as_bytes()).ok()?;
-        if decoded.len() != SESSION_SECRET_BYTES
-            || URL_SAFE_NO_PAD.encode(&decoded) != raw_secret
-        {
+        if decoded.len() != SESSION_SECRET_BYTES || URL_SAFE_NO_PAD.encode(&decoded) != raw_secret {
             return None;
         }
 
@@ -101,8 +99,7 @@ pub async fn issue_session(
     scope: SessionScope,
     ttl: Duration,
 ) -> Result<IssuedSession, SessionIssuanceError> {
-    let ttl_seconds =
-        i32::try_from(ttl.as_secs()).map_err(|_| SessionIssuanceError::InvalidTtl)?;
+    let ttl_seconds = i32::try_from(ttl.as_secs()).map_err(|_| SessionIssuanceError::InvalidTtl)?;
     if ttl_seconds <= 0 {
         return Err(SessionIssuanceError::InvalidTtl);
     }
