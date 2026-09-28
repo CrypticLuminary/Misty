@@ -40,19 +40,39 @@ jobs:
       - run: cargo fmt --all -- --check
       - run: cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
       - run: cargo test --locked --workspace --all-features
-      - name: API migration and readiness smoke test
+      - name: Configuration rejection smoke test
+        run: |
+          if env -u DATABASE_URL cargo run --locked -p misty-api > /tmp/misty-config.log 2>&1; then
+            echo "API unexpectedly started without DATABASE_URL" >&2
+            exit 1
+          fi
+          grep -q "required environment variable DATABASE_URL is missing" /tmp/misty-config.log
+      - name: Media worker smoke test
+        run: cargo run --locked -p misty-media-worker 2>&1 | grep -q "misty media worker foundation ready"
+      - name: API migration, health, request-ID and readiness smoke test
         run: |
           cargo run --locked -p misty-api > /tmp/misty-api.log 2>&1 &
           api_pid=$!
           trap 'kill "$api_pid" 2>/dev/null || true; cat /tmp/misty-api.log' EXIT
+
+          ready=false
           for attempt in {1..30}; do
             if curl --fail --silent http://127.0.0.1:8080/ready | grep -q '"status":"ready"'; then
-              exit 0
+              ready=true
+              break
             fi
             sleep 1
           done
-          echo "API did not become ready" >&2
-          exit 1
+          if [ "$ready" != "true" ]; then
+            echo "API did not become ready" >&2
+            exit 1
+          fi
+
+          curl --fail --silent http://127.0.0.1:8080/health | grep -q '"status":"ok"'
+          curl --fail --silent --dump-header /tmp/misty-headers.txt \
+            --header "x-request-id: misty-ci-request-id" \
+            http://127.0.0.1:8080/health > /tmp/misty-health.json
+          grep -qi '^x-request-id: misty-ci-request-id' /tmp/misty-headers.txt
 
   web:
     runs-on: ubuntu-latest
