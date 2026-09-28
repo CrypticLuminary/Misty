@@ -49,3 +49,11 @@ Storage, AI inference and payment providers receive narrow interfaces. Do not hi
 
 ## Performance
 Use cursor pagination, virtualized galleries, lazy derivative loading, CDN delivery, asynchronous processing and measured indexing. Never use originals as gallery thumbnails.
+
+
+## Complexity budget
+The architecture diagram is a direction, not an instruction to activate every component early. Redis, pgvector, outbox dispatch, dedicated queues, billing integrations and additional services remain dormant until a concrete vertical slice requires them.
+
+Keep module boundaries aligned to business capabilities, but do not extract services merely because a module exists. The modular monolith is the default until measured scaling, reliability, deployment or team-ownership needs justify extraction.
+
+At the Phase 2 exit, explicitly review the Rust core API based on maintainability, transaction ergonomics, contributor onboarding, API-contract generation, test friction and delivery velocity before expanding into media workflows.
