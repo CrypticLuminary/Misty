@@ -259,7 +259,7 @@ mod database_tests {
 
     async fn create_space(pool: &PgPool, id: Uuid, creator: Uuid) {
         sqlx::query(
-            "INSERT INTO identities (id, kind) VALUES ($1, 'owner') ON CONFLICT (id) DO NOTHING",
+            "INSERT INTO identities (id) VALUES ($1) ON CONFLICT (id) DO NOTHING",
         )
         .bind(creator)
         .execute(pool)
@@ -278,7 +278,7 @@ mod database_tests {
 
     async fn create_membership(pool: &PgPool, id: Uuid, space_id: Uuid, identity_id: Uuid) {
         sqlx::query(
-            "INSERT INTO identities (id, kind) VALUES ($1, 'owner') ON CONFLICT (id) DO NOTHING",
+            "INSERT INTO identities (id) VALUES ($1) ON CONFLICT (id) DO NOTHING",
         )
         .bind(identity_id)
         .execute(pool)
@@ -294,6 +294,33 @@ mod database_tests {
         .execute(pool)
         .await
         .expect("membership should be created");
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn identity_role_is_defined_by_membership_not_identity_record(pool: PgPool) {
+        let identity = Uuid::new_v4();
+        let other_creator = Uuid::new_v4();
+        let owned_space = Uuid::new_v4();
+        let guest_space = Uuid::new_v4();
+
+        create_space(&pool, owned_space, identity).await;
+        create_membership(&pool, Uuid::new_v4(), owned_space, identity).await;
+        create_space(&pool, guest_space, other_creator).await;
+
+        let result = sqlx::query(
+            "INSERT INTO memberships (id, space_id, identity_id, role)
+             VALUES ($1, $2, $3, 'guest')",
+        )
+        .bind(Uuid::new_v4())
+        .bind(guest_space)
+        .bind(identity)
+        .execute(&pool)
+        .await;
+
+        assert!(
+            result.is_ok(),
+            "the same neutral identity may hold different roles in different Spaces"
+        );
     }
 
     #[sqlx::test(migrations = "./migrations")]
@@ -333,7 +360,7 @@ mod database_tests {
         create_membership(&pool, Uuid::new_v4(), space, Uuid::new_v4()).await;
 
         let second_identity = Uuid::new_v4();
-        sqlx::query("INSERT INTO identities (id, kind) VALUES ($1, 'owner')")
+        sqlx::query("INSERT INTO identities (id) VALUES ($1)")
             .bind(second_identity)
             .execute(&pool)
             .await
@@ -359,7 +386,7 @@ mod database_tests {
     #[sqlx::test(migrations = "./migrations")]
     async fn archived_space_requires_archive_timestamp(pool: PgPool) {
         let identity = Uuid::new_v4();
-        sqlx::query("INSERT INTO identities (id, kind) VALUES ($1, 'owner')")
+        sqlx::query("INSERT INTO identities (id) VALUES ($1)")
             .bind(identity)
             .execute(&pool)
             .await
@@ -436,7 +463,7 @@ mod database_tests {
     async fn guest_session_membership_must_belong_to_same_space(pool: PgPool) {
         let first_identity = Uuid::new_v4();
         let second_identity = Uuid::new_v4();
-        sqlx::query("INSERT INTO identities (id, kind) VALUES ($1, 'owner'), ($2, 'owner')")
+        sqlx::query("INSERT INTO identities (id) VALUES ($1), ($2, 'owner')")
             .bind(first_identity)
             .bind(second_identity)
             .execute(&pool)
@@ -474,7 +501,7 @@ mod database_tests {
     #[sqlx::test(migrations = "./migrations")]
     async fn session_verifier_is_unique_and_expiry_must_be_future(pool: PgPool) {
         let identity = Uuid::new_v4();
-        sqlx::query("INSERT INTO identities (id, kind) VALUES ($1, 'owner')")
+        sqlx::query("INSERT INTO identities (id) VALUES ($1)")
             .bind(identity)
             .execute(&pool)
             .await
