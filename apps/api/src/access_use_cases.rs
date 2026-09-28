@@ -15,12 +15,12 @@ pub enum AccessError {
     Unauthorized,
     Forbidden,
     InviteUnavailable,
-    Database(sqlx::Error),
+    Database,
 }
 
 impl From<sqlx::Error> for AccessError {
-    fn from(value: sqlx::Error) -> Self {
-        Self::Database(value)
+    fn from(_: sqlx::Error) -> Self {
+        Self::Database
     }
 }
 
@@ -29,7 +29,7 @@ impl From<AuthorizationError> for AccessError {
         match value {
             AuthorizationError::NotMember => Self::Unauthorized,
             AuthorizationError::Forbidden => Self::Forbidden,
-            AuthorizationError::Database => Self::Database(sqlx::Error::RowNotFound),
+            AuthorizationError::Database => Self::Database,
         }
     }
 }
@@ -46,7 +46,6 @@ pub struct IssuedSession {
     pub secret: String,
     pub expires_at: DateTime<Utc>,
 }
-
 
 pub async fn create_account_session_for_bootstrap(
     pool: &PgPool,
