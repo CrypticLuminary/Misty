@@ -276,6 +276,23 @@ pub async fn archive_space(
     space_id: Uuid,
     correlation_id: Uuid,
 ) -> Result<SpaceSummary, ArchiveSpaceError> {
+    archive_space_with_audit_id(
+        pool,
+        session,
+        space_id,
+        correlation_id,
+        Uuid::new_v4(),
+    )
+    .await
+}
+
+async fn archive_space_with_audit_id(
+    pool: &PgPool,
+    session: &AuthenticatedSession,
+    space_id: Uuid,
+    correlation_id: Uuid,
+    audit_event_id: Uuid,
+) -> Result<SpaceSummary, ArchiveSpaceError> {
     let mut transaction = pool.begin().await.map_err(ArchiveSpaceError::Storage)?;
 
     let grant =
@@ -310,7 +327,7 @@ pub async fn archive_space(
          (id, space_id, actor_identity_id, actor_membership_id, event_type, correlation_id)
          VALUES ($1, $2, $3, $4, $5, $6)",
     )
-    .bind(Uuid::new_v4())
+    .bind(audit_event_id)
     .bind(space_id)
     .bind(session.identity_id())
     .bind(grant.membership_id())
