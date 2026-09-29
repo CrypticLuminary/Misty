@@ -31,18 +31,20 @@ This phase intentionally comes before media upload. Upload authorization is unsa
 **Evidence:** identities are neutral principals while role/display-name state is Space-membership scoped. Session issuance generates 256-bit OS-random opaque credentials, stores only 32-byte SHA-256 verifiers, rejects malformed credentials before database access, binds scoped sessions to the exact active membership identity, and denies expired, revoked, or removed access. Exact implementation commit `c5d7598451a5699fe9656257e61b787021b9f43d` passed CI `36427736526`, Security `36427736343`, and CodeQL `36427736345`.
 
 ## M2.3 Authorization kernel and Space use cases
-- [ ] Add the central deny-by-default capability evaluator before protected Space operations.
-- [ ] Make role presets map explicitly to capabilities; roles are not the authorization boundary.
-- [ ] Create Space and owner membership atomically.
-- [ ] Read Space summary through the shared authorization boundary.
-- [ ] List current member's Spaces where appropriate.
-- [ ] Archive Space through the shared authorization boundary.
-- [ ] Reject writes to non-ACTIVE Spaces unless explicitly allowed.
-- [ ] Prevent ownerless active Spaces through authoritative use-case rules.
-- [ ] Record audit events in the same transaction/outbox boundary as sensitive transitions.
-- [ ] Add cross-Space negative tests for the Space operations introduced here.
+- [x] Add the central deny-by-default capability evaluator before protected Space operations.
+- [x] Make role presets map explicitly to capabilities; roles are not the authorization boundary.
+- [x] Create Space and owner membership atomically.
+- [x] Read Space summary through the shared authorization boundary.
+- [x] List current member's Spaces where appropriate.
+- [x] Archive Space through the shared authorization boundary.
+- [x] Reject currently supported invalid/non-ACTIVE mutations; reusable write guard remains deferred until a real write use case consumes it.
+- [x] Prevent ownerless active Spaces through currently supported use cases; owner remove/leave/transfer semantics are gated to P2-T07 before those mutations exist.
+- [x] Record audit events in the same transaction boundary as sensitive transitions.
+- [x] Add cross-Space negative tests for the Space operations introduced here.
 
 **Gate:** protected Space use cases are transport-independent, deny by default, and cannot be called successfully without the same central authorization boundary.
+
+**Evidence:** P2-T01 through P2-T04 passed their mandatory security/correctness and architecture/alignment reviews. Reviewed integration head `ae32f8c4006f75c767c5cb98389ef7f129f95e12` passed CI `36442267842`, Security `36442267720`, and CodeQL `36442267973`.
 
 ## M2.4 Invitations and joining
 - [ ] Generate cryptographically unpredictable invitation secrets.
