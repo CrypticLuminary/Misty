@@ -6,7 +6,7 @@ Last updated: 2026-09-28
 **Phase 2 — Secure Space Access (active)**
 
 ## Current milestone
-**M2.3 — Authorization kernel and Space use cases**
+**M2.4 — Invitations and joining**
 
 ## Completed and verified
 - Product invariants, architecture, security guidance, engineering rules, roadmap and foundational ADRs.
@@ -20,6 +20,7 @@ Last updated: 2026-09-28
 - Phase 1 correctness, security, performance, architecture, dependency, documentation and reproducibility review.
 - Phase 2 M2.1 domain invariants: lifecycle models, explicit capability presets, PostgreSQL cross-Space constraints and negative tests.
 - Phase 2 M2.2 identity/session foundation: neutral identities, Space-scoped membership aliases/roles, 256-bit opaque session issuance, verifier-only storage, scoped membership binding, expiry/revocation and removed-member denial.
+- Phase 2 M2.3 authorization/Space slice: central deny-by-default capability boundary, atomic CreateSpace+owner+audit, protected read/list, transactional archive, cross-Space negative tests and dual reviews.
 
 M2.2 gate evidence on commit `c5d7598451a5699fe9656257e61b787021b9f43d`: CI `36427736526`, Security `36427736343`, and CodeQL `36427736345` all passed.
 
@@ -41,7 +42,7 @@ No production application capability should be assumed. The following remain fut
 The transactional-outbox foundation does not yet include a dispatcher, queue delivery or consumers. The Rust core API remains provisional until the first secure vertical slice validates maintainability and ecosystem fit.
 
 ## Active Phase 2 milestone
-**M2.3 — Authorization kernel and Space use cases.** Establish the deny-by-default capability boundary first, then implement transport-independent create/read/list/archive operations with owner-integrity, ACTIVE-only writes, cross-Space negative tests and transactional audit evidence before exposing HTTP routes.
+**M2.4 — Invitations and joining.** Introduce invitation credential issuance/verifier semantics, atomic expiry/revocation/use-limit behavior, then build the guest join transaction and revocation path through the existing authorization kernel.
 
 ## Owner decisions pending
 None required to close the engineering foundation. Production hosting, object-storage provider and related cost/geography decisions remain intentionally deferred until measured requirements exist.
@@ -50,6 +51,6 @@ None required to close the engineering foundation. Production hosting, object-st
 ## Phase 2 execution loop
 Detailed task order and mandatory dual-review gates live in `docs/milestones/PHASE-2-EXECUTION.md`. GitHub issue #15 mirrors the high-level progress.
 
-Current task: **P2-T04 — Archive + ACTIVE-only mutation rules**.
+Current task: **P2-T05 — Invitation credential boundary**.
 
 Every task must pass implementation/tests, exact-head CI/Security/CodeQL, Review A (security/bugs/vulnerabilities), and Review B (approach/system alignment) before it is marked complete. Findings reopen the task; they are not deferred merely to keep the roadmap moving.
