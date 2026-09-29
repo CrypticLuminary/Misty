@@ -8,33 +8,43 @@ Deliver Misty's first real vertical slice: a creator can create a private Space,
 This phase intentionally comes before media upload. Upload authorization is unsafe until Space identity, membership, invitation and capability boundaries exist.
 
 ## M2.1 Domain model and invariants
-- [ ] Define Space lifecycle: ACTIVE → ARCHIVED → DELETING → DELETED.
-- [ ] Define membership lifecycle: ACTIVE → LEFT / REMOVED.
-- [ ] Define invitation lifecycle and expiry/revocation semantics.
-- [ ] Define capability vocabulary and role presets without using roles as the authorization boundary.
-- [ ] Add PostgreSQL constraints/indexes for cross-Space integrity and token uniqueness.
-- [ ] Add domain transition tests.
+- [x] Define Space lifecycle: ACTIVE → ARCHIVED → DELETING → DELETED.
+- [x] Define membership lifecycle: ACTIVE → LEFT / REMOVED.
+- [x] Define invitation lifecycle and expiry/revocation semantics.
+- [x] Define capability vocabulary and role presets without using roles as the authorization boundary.
+- [x] Add PostgreSQL constraints/indexes for cross-Space integrity and token uniqueness.
+- [x] Add domain transition tests.
 
 **Gate:** invalid transitions and cross-Space relationships are rejected by authoritative domain/database rules.
 
+**Evidence:** `0002_secure_space_access.sql` enforces lifecycle shape, active-owner/membership uniqueness, invitation verifier constraints and same-Space invitation creators. `domain.rs` rejects invalid transitions and includes PostgreSQL integration tests for the critical constraints.
+
 ## M2.2 Identity and sessions
-- [ ] Establish owner identity/session foundation.
-- [ ] Establish scoped guest sessions without requiring a full account.
-- [ ] Use secure server-side session meaning; browser state alone never authorizes.
-- [ ] Define cookie/CSRF strategy for the deployed topology before mutating browser endpoints.
-- [ ] Add session expiry/revocation behavior and tests.
+- [x] Establish owner identity/session foundation.
+- [x] Establish scoped guest sessions without requiring a full account.
+- [x] Use secure server-side session meaning; browser state alone never authorizes.
+- [x] Define cookie/CSRF strategy for the deployed topology before mutating browser endpoints.
+- [x] Add session expiry/revocation behavior and tests.
 
 **Gate:** an anonymous browser cannot become a member or perform protected operations without a valid server-recognized flow.
 
-## M2.3 Space use cases
-- [ ] Create Space.
-- [ ] Read Space summary.
-- [ ] List current member's Spaces where appropriate.
-- [ ] Archive Space.
-- [ ] Reject writes to non-ACTIVE Spaces unless explicitly allowed.
-- [ ] Record audit events for sensitive transitions.
+**Evidence:** identities are neutral principals while role/display-name state is Space-membership scoped. Session issuance generates 256-bit OS-random opaque credentials, stores only 32-byte SHA-256 verifiers, rejects malformed credentials before database access, binds scoped sessions to the exact active membership identity, and denies expired, revoked, or removed access. Exact implementation commit `c5d7598451a5699fe9656257e61b787021b9f43d` passed CI `36427736526`, Security `36427736343`, and CodeQL `36427736345`.
 
-**Gate:** use cases are transport-independent and authorization is not embedded only in handlers.
+## M2.3 Authorization kernel and Space use cases
+- [x] Add the central deny-by-default capability evaluator before protected Space operations.
+- [x] Make role presets map explicitly to capabilities; roles are not the authorization boundary.
+- [x] Create Space and owner membership atomically.
+- [x] Read Space summary through the shared authorization boundary.
+- [x] List current member's Spaces where appropriate.
+- [x] Archive Space through the shared authorization boundary.
+- [x] Reject currently supported invalid/non-ACTIVE mutations; reusable write guard remains deferred until a real write use case consumes it.
+- [x] Prevent ownerless active Spaces through currently supported use cases; owner remove/leave/transfer semantics are gated to P2-T07 before those mutations exist.
+- [x] Record audit events in the same transaction boundary as sensitive transitions.
+- [x] Add cross-Space negative tests for the Space operations introduced here.
+
+**Gate:** protected Space use cases are transport-independent, deny by default, and cannot be called successfully without the same central authorization boundary.
+
+**Evidence:** P2-T01 through P2-T04 passed their mandatory security/correctness and architecture/alignment reviews. Reviewed integration head `ae32f8c4006f75c767c5cb98389ef7f129f95e12` passed CI `36442267842`, Security `36442267720`, and CodeQL `36442267973`.
 
 ## M2.4 Invitations and joining
 - [ ] Generate cryptographically unpredictable invitation secrets.
@@ -48,7 +58,9 @@ This phase intentionally comes before media upload. Upload authorization is unsa
 
 **Gate:** possession of an asset/Space/member ID alone never grants access; invitation secrets are scoped and revocable.
 
-## M2.5 Capability authorization
+## M2.5 Capability authorization hardening
+M2.3 introduces the authorization kernel because protected use cases must not precede it. This milestone proves that the boundary remains complete as invitations and joining add more paths.
+
 Initial vocabulary:
 - `can_view`
 - `can_upload`
@@ -63,11 +75,11 @@ Initial vocabulary:
 - `can_view_location`
 
 Tasks:
-- [ ] Central capability evaluator.
-- [ ] Role presets map to capabilities.
-- [ ] Every protected use case invokes the same authorization boundary.
-- [ ] Deny-by-default behavior.
-- [ ] Cross-Space authorization property/invariant tests.
+- [ ] Verify every protected Phase 2 use case invokes the same authorization boundary.
+- [ ] Add invitation/join capability cases without bypass paths.
+- [ ] Add deny-by-default regression tests for newly introduced capabilities.
+- [ ] Add broader cross-Space authorization property/invariant tests.
+- [ ] Review the vocabulary and remove/rename presets that encode identity/account status rather than access policy.
 
 **Gate:** frontend hiding is never required for security and authorization tests cover negative cases.
 

@@ -6,6 +6,11 @@ Correctness → Security → Clarity → Testability → Performance → Reuse �
 ## DRY
 DRY duplicated **knowledge**, not every repeated line. Authorization policy, retention rules and state transitions need authoritative implementations. Two superficially similar use cases may remain separate until their shared abstraction is stable.
 
+## Vertical-slice delivery
+After the secure foundation, prefer thin end-to-end increments that leave the system in a usable, testable state. Do not implement a business operation first and bolt authorization, audit, abuse controls or transport semantics onto it several milestones later.
+
+A vertical slice should normally include the minimum domain rule, authorization boundary, persistence, audit/observability, transport contract and negative tests needed for that operation. Cross-cutting systems should grow only when a real slice requires them.
+
 ## Use-case orientation
 HTTP handlers validate transport concerns, call an application use case, and serialize a response. Avoid giant controllers and giant catch-all service classes.
 
