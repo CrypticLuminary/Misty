@@ -88,13 +88,19 @@ For every task ask:
 **Review B:** accepted. The shared scope-aware grant query keeps capability semantics centralized and avoids one authorization query per Space without introducing a repository/ACL abstraction. Existing active-membership and primary-key indexes support the Phase 2 query shape. Pagination is intentionally deferred to the API-contract milestone unless measured/realistic per-identity Space counts justify it.
 
 ### P2-T04 Archive + ACTIVE-only mutation rules
-- [ ] Archive via `can_manage_space`.
-- [ ] Forward-only transition.
-- [ ] Current production mutations reject invalid/non-ACTIVE transitions; introduce a reusable ACTIVE-write guard into production only when a real subsequent write use case consumes it.
-- [ ] Audit archive transition in same durable boundary.
-- [ ] Concurrent archive/update behavior tested.
-- [ ] Review A complete.
-- [ ] Review B complete.
+- [x] Archive via `can_manage_space`.
+- [x] Forward-only transition.
+- [x] Current production mutations reject invalid/non-ACTIVE transitions; introduce a reusable ACTIVE-write guard into production only when a real subsequent write use case consumes it.
+- [x] Audit archive transition in same durable boundary.
+- [x] Concurrent archive/update behavior tested.
+- [x] Review A complete.
+- [x] Review B complete.
+
+**Evidence:** reviewed implementation head `ae32f8c4006f75c767c5cb98389ef7f129f95e12` passed CI `36442267842`, Security `36442267720`, and CodeQL `36442267973`.
+
+**Review A:** passed. Archive requires `can_manage_space`, authorization and lifecycle mutation share one transaction, the Space row is locked before transition, repeated archive is rejected, failed audit persistence rolls the state change back, and competing state mutation is blocked while the active-write invariant is relied upon.
+
+**Review B:** accepted after removing a speculative production write-guard helper that no production use case consumed. Phase 2 now defines ARCHIVED explicitly as readable-by-`can_view` but ordinarily read-only; archive is not deletion or implicit membership revocation. The reusable active-write helper stays test-only until a real subsequent write use case needs it.
 
 ## M2.4 — Invitations + joining
 
