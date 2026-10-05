@@ -5,7 +5,7 @@ edition = "2024"
 publish = false
 
 [dependencies]
-base64 = "0.22"
+base64 = "0.23"
 rand = "0.8"
 axum = "0.8"
 serde = { version = "1", features = ["derive"] }
